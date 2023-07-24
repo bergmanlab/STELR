@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="https://github.com/bergmanlab/TELR/blob/master/img/TELR.png?raw=true" alt="TELR"/>
+    <img src="https://github.com/bergmanlab/TELR/blob/master/img/STELR.png?raw=true" alt="TELR"/>
 </p>
 
 ## Introduction
