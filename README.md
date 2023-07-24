@@ -3,11 +3,11 @@
 </p>
 
 ## Introduction
-TELR (pronounced Teller) is a fast non-reference transposable element (TE) detector from long read sequencing data (PacBio or Oxford Nanopore). TELR uses long reads mapped to a reference genome to identify insertions using [Sniffles](https://github.com/fritzsedlazeck/Sniffles), then filters insertions by matching insertion supporting reads with user supplied TE consensus sequences. For each TE insertion candidate locus, TELR performs a local assembly of all reads supporting TE insertion, annotates the TE sequence in assembled contigs, then maps the flanks back to the reference genome. Finally, TELR generates the coordinates of the non-reference TE insertions, the estimated allele frequency and the assembled TE sequences.
+STELR (pronounced Stellar) is a re-implementation of the fast non-reference transposable element (TE) detector from long read sequencing data (PacBio or Oxford Nanopore) called [TELR](https://github.com/bergmanlab/TELR) that leverages the [Snakemake](https://github.com/snakemake/) workflow manager. STELR uses long reads mapped to a reference genome to identify insertions using [Sniffles](https://github.com/fritzsedlazeck/Sniffles), then filters insertions by matching insertion supporting reads with user supplied TE consensus sequences. For each TE insertion candidate locus, STELR performs a local assembly of all reads supporting TE insertion, annotates the TE sequence in assembled contigs, then maps the flanks back to the reference genome. Finally, STELR generates the coordinates of the non-reference TE insertions, the estimated allele frequency and the assembled TE sequences.
 
-The TELR pipeline consists of four main stages: (1) general SV detection and filter for TE insertion candidate, (2) local reassembly and polishing of the TE insertion, (3) identification of TE insertion coordinates, and (4) estimation of intra-sample TE insertion allele frequency.
+The STELR pipeline consists of four main stages: (1) general SV detection and filter for TE insertion candidate, (2) local reassembly and polishing of the TE insertion, (3) identification of TE insertion coordinates, and (4) estimation of intra-sample TE insertion allele frequency.
 
-- In stage 1, long reads are aligned to the reference genome using NGMLR (https://github.com/philres/ngmlr). The alignment output in BAM format is provided as input for Sniffles (https://github.com/fritzsedlazeck/Sniffles) to detect structural variations (SVs). TELR then filter for TE insertion candidates from SVs reported by Sniffles using following criteria: 1) The type of SV is insertion. 2) Insertion sequence is available. 3) The insertion sequences include hits from user provided TE consensus library using RepeatMasker (http://www.repeatmasker.org}).
+- In stage 1, long reads are aligned to the reference genome using NGMLR (https://github.com/philres/ngmlr). The alignment output in BAM format is provided as input for Sniffles (https://github.com/fritzsedlazeck/Sniffles) to detect structural variations (SVs). STELR then filter for TE insertion candidates from SVs reported by Sniffles using following criteria: 1) The type of SV is insertion. 2) Insertion sequence is available. 3) The insertion sequences include hits from user provided TE consensus library using RepeatMasker (http://www.repeatmasker.org}).
 
 - In stage 2, reads that support the TE insertion candidate locus based on Sniffles output are used as input for wtdbg2 (https://github.com/ruanjue/wtdbg2) or flye (https://github.com/fenderglass/Flye) to assemble local contig that covers the TE insertion for each TE insertion candidate locus. The local assemblies are then polished using wtdbg2 or flye. Note that 1) each assembler can be matched with each polisher, and 2) minimap2 is used to re-align reads to local contig for polishing.
 
@@ -16,12 +16,12 @@ The TELR pipeline consists of four main stages: (1) general SV detection and fil
 - In stage 4, raw reads aligned to the reference genome are extracted within a 1kb interval on either side of the insertion breakpoints initially defined by Sniffles. The reads are then aligned to the assembled polished contig to identify reads that support the TE insertion and reference alleles, respectively, in following steps: 1) Reads are aligned to the forward strand of the contig, 5' flanking sequence depth (`5p_flank_cov`) and 5' TE depth (`5p_te_cov`) are calculated. 2) Reads are aligned to the reverse complement strand of the contig, 5' flanking sequence depth (`3p_flank_cov`) and 5' TE depth (`3p_te_cov`) are calculated. 3) The TE allele frequency is estimated as `(5p_te_cov/5p_flank_cov + 3p_te_cov/3p_flank_cov)/2`.
 
 <p align="center">
-<img src="https://github.com/bergmanlab/TELR/blob/master/img/TELR_workflow.png?raw=true"/>
+<img src="https://github.com/bergmanlab/STELR/blob/master/img/TELR_workflow.png?raw=true"/>
 </p>
 
-The current version of TELR shows good performance on real Drosophila melanogaster data sets, including datasets with heterozygous TE insertions.
+The current version of STELR shows good performance on real Drosophila melanogaster data sets, including datasets with heterozygous TE insertions.
 
-TELR is written in python3 and is designed to run on linux operating system.
+STELR is written in python3 and is designed to run on linux operating system.
 
 ## Documentation
 The following sections will provide you installation instructions, usage guide, and descriptions of output files.
@@ -30,10 +30,9 @@ The following sections will provide you installation instructions, usage guide, 
   - [Output Files](docs/03_Output_Files.md)
 
 ## Getting Help
-Please use the [Github Issue page](https://github.com/bergmanlab/TELR/issues) if you have questions.
+Please use the [Github Issue page](https://github.com/bergmanlab/STELR/issues) if you have questions.
 
 ## Citation
-To cite TELR in publications, please use:
+To cite STELR in publications, please use:
 
-  Shunhua Han, Guilherme B Dias, Preston J Basting, Raghuvir Viswanatha, Norbert Perrimon, Casey M Bergman, Local assembly of long reads enables phylogenomics of transposable elements in a polyploid cell line, Nucleic Acids Research, 2022
-  https://doi.org/10.1093/nar/gkac794
+  Shunhua Han, Guilherme B Dias, Preston J Basting, Raghuvir Viswanatha, Norbert Perrimon, Casey M Bergman (2022) Local assembly of long reads enables phylogenomics of transposable elements in a polyploid cell line. Nucleic Acids Research 50(21):e124 https://doi.org/10.1093/nar/gkac794.
