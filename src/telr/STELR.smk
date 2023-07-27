@@ -257,11 +257,12 @@ rule unique_IDlist: # get a list of unique IDs from the readlist
 
 rule filter_readlist: # use seqtk to get the fasta reads from the input reads file
     input:
-        "contigs/{contig}/00_{readlist}.id.unique"
+        reads = config["fasta_reads"],
+        unique = "contigs/{contig}/00_{readlist}.id.unique"
     output:
         "contigs/{contig}/00_{readlist}.fa"
     shell:
-        "seqtk subseq '{config[fasta_reads]}' '{input}' | seqtk seq -a > '{output}'"
+        "seqtk subseq '{input.reads}' '{input.unique}' | seqtk seq -a > '{output}'"
 
 rule run_assembly:
     input:
@@ -730,7 +731,7 @@ checkpoint json_for_report:
         "contigs/{contig}/tes/{te}/15_flank_overlap.json"
     shell:
         """
-        python3 {config[STELR_liftover]} bed_to_json {input.overlap} {input.info_5p} {input.info_3p} {output}
+        python3 {config[STELR_liftover]} bed_to_json {input.overlap} {input.info_5p} {input.info_3p} {output} || true
         touch {output}
         """
 
@@ -747,7 +748,7 @@ rule make_report:
         flank_gap_max = config["gap"]
     shell:
         """
-        python3 {config[STELR_liftover]} make_report {input.overlap} {wildcards.overlap_id} {input.te_json} {input.ref_bed} {input.reference} {params.flank_overlap_max} {params.flank_gap_max} {output}
+        python3 {config[STELR_liftover]} make_report {input.overlap} {wildcards.overlap_id} {input.te_json} {input.ref_bed} {input.reference} {params.flank_overlap_max} {params.flank_gap_max} {output} || true
         touch {output}
         """
 
