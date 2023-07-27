@@ -6,7 +6,7 @@ import logging
 import time
 from Bio import SeqIO
 from STELR_utility import mkdir, format_time, create_loci_set, get_contig_name
-
+#
 
 def detect_sv(
     bam,
