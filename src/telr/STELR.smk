@@ -122,7 +122,7 @@ def parse_vcf_input(wildcards):
     return f"sv-reads_{sv_detector(wildcards)}.vcf"
 rule parse_vcf:
     input:
-        sv_detector
+        parse_vcf_input
     output:
         "reads.vcf_parsed.tsv.tmp"
     params:
@@ -586,7 +586,9 @@ rule sort_ref_rm:
         fi
         """
 
-##### TELR Liftover
+'''3rd stage
+Identify TE insertion breakpoint (minimap2)
+'''
 
 rule build_index:
     input:
@@ -769,20 +771,13 @@ rule best_report:
             "contigs/{contig}/tes/{te}/14_5p_flank.bed",
             "contigs/{contig}/tes/{te}/14_3p_flank.bed"
             ],
+        ref_bed = lambda wildcards: f"ref_repeatmask/{os.path.basename(config['reference'])}.te.bed",
         te_json = "contigs/{contig}/tes/{te}/00_annotation.json",
         overlap_reports = overlap_ids_report
     output:
         "contigs/{contig}/tes/{te}/17_best_report.json"
     shell:
         "python3 {config[STELR_liftover]} choose_report {output} {input}"
-
-
-def annotation_from_option(wildcards):
-    return {True:f"contigs/{wildcards.contig}/10_annotation.bed",False:f"contigs/{wildcards.contig}/rm_05_rm_reannotated_tes.bed"}[config["minimap2_family"]]
-
-'''3rd stage
-Identify TE insertion breakpoint (minimap2)
-'''
 
 """
 4th stage: estimate intra-sample TE allele frequency (TAF)
