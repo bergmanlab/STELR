@@ -118,18 +118,19 @@ rule run_telr:
     params:
         polish_iterations = config["TELR parameters"]["Polishing iterations"],
         assembler = config["TELR parameters"]["Assembler"],
-        polisher = config["TELR parameters"]["Polisher"]
+        polisher = config["TELR parameters"]["Polisher"],
+        command = config["TELR command"]
     threads: config["Resources"]["Threads"]
     conda: config["telr_conda"]
     shell:
         """
-        python3 {config[telr]} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
+        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
         """
 
 #'''
 rule telr_liftover_eval:
     input:
-        telr_out = "{sample_name}.telr.contig.fasta",
+        telr_out = lambda wildcards: f"{config['reads_name']}.telr.contig.fasta",
         region_mask = config["Evaluation requirements"]["Regular recombination region"],
         annotation = config["Evaluation requirements"]["Mapping reference annotation"]
     output:
@@ -143,27 +144,52 @@ rule telr_liftover_eval:
         python3 {config[liftover_eval]} -i . -o liftover_eval -r {input.region_mask} -b {input.annotation} --exclude_families "INE_1"
         """
 
+def get_ploidy(wildcards): #adjust this for non tetraploid and diploid options
+    if config["read source"] == "simulated reads":
+        string = config["options for simulated reads"]["Simulation type"]
+    else: string = os.path.basename(config["options for reads from file"]["Long read sequencing data"])
+    string = string.lower()
+    if "tetraploid" in string: return 4
+    else: return 2
+def get_genotype(wildcards):
+    if config["read source"] == "simulated reads":
+        string = config["options for simulated reads"]["Simulation type params"]["genotype"]
+    else: string = os.path.basename(config["options for reads from file"]["Long read sequencing data"])
+    string = string.lower()
+    ploidy = get_ploidy(wildcards)
+    if ploidy == 4:
+        for genotype in ["simplex","duplex","triplex","quadruplex"]:
+            if genotype in string:
+                return genotype
+    else:
+        for genotype in ["homozygous","heterozygous"]:
+            if genotype in string:
+                return genotype
+        return "heterozygous"
 rule telr_af_eval:
     input:
-        telr_out = "{sample_name}.telr.contig.fasta",
+        telr_out = lambda wildcards: f"{config['reads_name']}.telr.contig.fasta",
         region_mask = config["Evaluation requirements"]["Regular recombination region"]
     output:
         "af_eval/telr_eval_af.json"
+    params:
+        ploidy = get_ploidy,
+        genotype = get_genotype
     shell:
         """
         if [ ! -d af_eval ]
         then
             mkdir af_eval
         fi
-        python3 {config[af_eval]} -i . -o af_eval -r {input.region_mask} --exclude_families "INE_1" --ploidy {config[options for simulated reads][Simulation type]} --genotype {config[options for simulated reads][Simulation type params][genotype]}
+        python3 {config[af_eval]} -i . -o af_eval -r {input.region_mask} --exclude_families "INE_1" --ploidy {params.ploidy} --genotype {params.genotype}
         """
 
 rule telr_seq_eval:
     input:
-        telr_out = "{sample_name}.telr.contig.fasta",
+        telr_out = lambda wildcards: f"{config['reads_name']}.telr.contig.fasta",
         region_mask = config["Evaluation requirements"]["Regular recombination region"],
         annotation = config["Evaluation requirements"]["Community reference annotation"],
-        reference = config["options for simulated reads"]["Reference Genomes"]["Community Reference"]
+        community_reference = config["Evaluation requirements"]["Community reference genome"]
     output:
         "seq_eval/seq_eval.json"
     threads: config["Resources"]["Threads"]
@@ -173,6 +199,6 @@ rule telr_seq_eval:
         then
             mkdir seq_eval
         fi
-        python3 {config[seq_eval]} -i . -r {input.alternate_reference} -o seq_eval --region1 {input.region_mask} -a {input.annotation} -t {threads} --exclude_families "INE_1"
+        python3 {config[seq_eval]} -i . -r {input.community_reference} -o seq_eval --region1 {input.region_mask} -a {input.annotation} -t {threads} --exclude_families "INE_1"
         """
 #'''
