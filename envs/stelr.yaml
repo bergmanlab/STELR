@@ -1,4 +1,4 @@
-name: stelr
+name: STELR
 channels:
   - conda-forge
   - bioconda
