@@ -77,6 +77,17 @@ def config_from_file(config_file):
                 ["[","]","selection",("options for reads from file","Mapping Reference","get by")],
                 ["By accession:","\n",str,("options for reads from file","Mapping Reference","accession")]
             ],0],
+            ["Community Reference:",[
+                ["Community Reference:","\n",str,("options for reads from file","Community Reference","name")]
+                ],],
+            ["] By path:",[
+                ["[","]","selection",("options for reads from file","Community Reference","get by")],
+                ["By path:","\n","file_path",("options for reads from file","Community Reference","file path")]
+            ],0],
+            ["] By accession:",[
+                ["[","]","selection",("options for reads from file","Community Reference","get by")],
+                ["By accession:","\n",str,("options for reads from file","Community Reference","accession")]
+            ],0],
             ["Long read sequencing data:",[["Long read sequencing data:","\n","file_path",("options for reads from file","Long read sequencing data")]]],
             ["] TELR version 1.X",[["[","]","selection",("TELR command",)]]],
             ["] Specific conda environment:",[
@@ -144,6 +155,10 @@ def config_from_file(config_file):
         if info:
             print(f"Error reading config: read config stalled after line {last_unstalled_line}")
             sys.exit(1)
+    if "read source" == "reads from file":
+        config["Evaluation requirements"]["Community reference genome"] = config["options for simulated reads"]["Reference Genomes"]["Community Reference"]["file path"]
+    else:
+        config["Evaluation requirements"]["Community reference genome"] = config["options for reads from file"]["Community Reference"]["file path"]
     return config
 
 def format_input(config, line, info_line, data):
@@ -405,6 +420,12 @@ def empty_default_config():
                 "file path":"path to file",
                 "accession":"genbank accession number"
             },
+            "Community Reference":{
+                "name":"name of genome",
+                "get by":"file path or accession",
+                "file path":"path to file",
+                "accession":"genbank accession number"
+            },
             "Long read sequencing data":"path to file"
         },
         "TELR command":f"python3 {abs_path(__file__).split('evaluation')[0]}telr/stelr.py",
@@ -439,7 +460,8 @@ def empty_default_config():
             }
         },
         "Evaluation requirements":{
-            "Mapping reference annotatation":"path to file",
+            "Community reference genome":"path to file",
+            "Mapping reference annotation":"path to file",
             "Community reference annotation":"path to file",
             "Regular recombination region":"path to file"
         },
