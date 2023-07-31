@@ -87,10 +87,10 @@ def run_workflow(config):
     try:
         if config["resume"] is None: 
             start = perf_counter()
-            subprocess.call(command, cwd=config["tmp_dir"])
+            subprocess.run(command, cwd=config["tmp_dir"])
         else:
-            subprocess.call(command + ["--unlock"], cwd=config["tmp_dir"])
-            subprocess.call(command + ["--rerun-incomplete"] + ["--rerun-triggers","mtime"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--rerun-incomplete"] + ["--rerun-triggers","mtime"], cwd=config["tmp_dir"])
         for output_file in config["output"]:
             os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file.replace('reads',config['sample_name'])}")
         if not config["keep_files"]:
