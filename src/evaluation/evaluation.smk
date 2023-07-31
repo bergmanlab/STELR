@@ -108,7 +108,7 @@ def reference_for_telr(wildcards):
             return config["options for reads from file"]["Mapping Reference"]["file path"]
         elif config["read source"] == "simulated reads":
             return config["options for simulated reads"]["Reference Genomes"]["Mapping Reference"]["file path"]
-rule run_telr:
+checkpoint run_telr:
     input:
         reference = reference_for_telr,
         reads = reads_for_telr,
@@ -124,6 +124,7 @@ rule run_telr:
     conda: config["telr_conda"]
     shell:
         """
+        pip install /home/hkg58926/github/TELR/
         {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
         """
 
@@ -201,4 +202,90 @@ rule telr_seq_eval:
         fi
         python3 {config[seq_eval]} -i . -r {input.community_reference} -o seq_eval --region1 {input.region_mask} -a {input.annotation} -t {threads} --exclude_families "INE_1"
         """
-#'''
+
+
+'''
+LIFTOVER_EVALUATION
+'''
+
+rule rename_chroms:
+    input:
+        telr_out = lambda wildcards: f"{config['reads_name']}.telr.contig.fasta"
+
+def need_to_rename(wildcards):
+    with open(config["Evaluation requirements"]["Regular recombination region"], "r") as region_mask:
+        list_of_chroms = {line.split("\t")[0] for line in region_mask}
+    telr_output_file = checkpoints.run_telr.get(output="bed").output[0]
+    with open(telr_output_file,"r") as telr_output:
+        chrom_match = len({line for line in telr_output for chrom in list_of_chroms if chrom in line})
+    if chrom_match == 0:
+        return "renamed_out.telr.bed"#TODO: make this file
+    else:
+        return telr_output_file
+def rename_json(wildcards):
+    return need_to_rename(wildcards).replace(".telr.bed",".telr.json")
+rule filter_annotation_region:
+    input:
+        region_mask = config["Evaluation requirements"]["Regular recombination region"],
+        annotation = config["Evaluation requirements"]["Community reference annotation"]
+    output:
+        "liftover_eval/filter_annotation_region.bed"
+    shell:
+        """
+        if [ ! -d liftover_eval ]
+        then
+            mkdir liftover_eval
+        fi
+        bedtools intersect -a {input.annotation} -b {input.region_mask} -u > {output}
+        """
+
+rule filter_annotation_family:
+    input:
+        region_mask = config["Evaluation requirements"]["Regular recombination region"],
+        annotation = "liftover_eval/filter_annotation_region.bed"
+    output:
+        "liftover_eval/filter_annotation_family.bed"
+    params:
+        family_filter = "INE-1"
+    shell:
+        """
+        python3 {config[eval_utility]} filter_family_bed {input.annotation} {params.family_filter} {output} "exclude"
+        """
+rule filter_telr_region:
+    input:
+        region_mask = config["Evaluation requirements"]["Regular recombination region"],
+        telr_output = need_to_rename
+    output:
+        "liftover_eval/filter_telr_region.bed"
+    shell:
+        """
+        if [ ! -d liftover_eval ]
+        then
+            mkdir liftover_eval
+        fi
+        bedtools intersect -a {input.telr_output} -b {input.region_mask} -u > {output}
+        """
+
+rule filter_telr_family:
+    input:
+        region_mask = config["Evaluation requirements"]["Regular recombination region"],
+        telr_output = "liftover_eval/filter_telr_region.bed",
+    output:
+        "liftover_eval/filter_telr_family.bed"
+    params:
+        family_filter = "INE-1"
+    shell:
+        """
+        python3 {config[eval_utility]} filter_family_bed {input.telr_output} {params.family_filter} {output} "exclude"
+        """
+
+rule filtered_output_with_info:
+    input:
+        "liftover_eval/filter_telr_family.bed",
+        rename_json
+    output:
+        "liftover_eval/filtered_telr_info.bed"
+    shell:
+        """
+        python3 {config[liftover_evaluation]} give_output_info {input} {output}
+        """
