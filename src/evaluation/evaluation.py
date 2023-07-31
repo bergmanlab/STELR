@@ -25,7 +25,9 @@ def main():
         config["resume"] = run_id
         config["tmp_dir"] = tmp_dir
         config["config_file"] = config_file
+        config = update_config(config)
 
+    setdict(config,("Resources","Estimated memory"),f'mem_mb={getdict(config,("Resources","Estimated memory"))}')
     snakefile = os.path.split(__file__)[0] + "/evaluation.smk"
     run_workflow(snakefile, config)
 
@@ -39,12 +41,15 @@ def get_file_paths():
     path_dict = {
         "telr":f"{telr_dir}/stelr.py",
         "telr_dir":telr_dir,
-        "telr_conda":f"{env_dir}/stelr_sniffles1.yaml"
+        "telr_conda":f"{env_dir}/stelr_sniffles1.yaml",
+        "liftover_eval":f"{eval_src_dir}/liftover_evaluation.py",
+        "af_eval":f"{eval_src_dir}/telr_af_eval.py",
+        "seq_eval":f"{eval_src_dir}/telr_seq_eval.py"
     }
 
     return path_dict
 
-def parse_args():
+def override_args():
     params = {("out",):abs_path()}
     args = {
         "-t":[("Resources","Threads"),int],
@@ -64,11 +69,23 @@ def parse_args():
             pass
         else:
             unparsed.append(this)
+    
+    return params, unparsed
+
+def update_config(config, params=False):
+    if not params:
+        params = override_args()[0]
+    for param in params:
+        setdict(config,param,params[param])
+    
+    return config
+
+def parse_args():
+    params, unparsed = override_args()
 
     config = config_from_file(unparsed[0])
     #print(params)
-    for param in params:
-        setdict(config,param,params[param])
+    config = update_config(config, params)
     
     return config
 
@@ -81,6 +98,8 @@ def setup_run(config):
     #print(json.dumps(config, indent=4))
     if source == "reads from file":
         reads_name =  config["options for reads from file"]["Long read sequencing data"]
+        reads_name = os.path.basename(reads_name)
+        reads_name = reads_name[:reads_name.rindex(".")]
     elif source == "simulated reads":
         cov = config["options for simulated reads"]["coverage"]
         simulation_type = config["options for simulated reads"]["Simulation type"]
@@ -90,9 +109,11 @@ def setup_run(config):
         else:
             genotype = config["options for simulated reads"]["Simulation type params"]["genotype"]
             reads_name =  f"{cov}x_{simulation_type}_{genotype}.fastq"
-
+    config["reads_name"] = reads_name
     config["output"] = [
-        f"{reads_name}.telr.contig"
+        "liftover_eval/annotation.filter.bed",
+        "af_eval/telr_eval_af.json",
+        "seq_eval/seq_eval.json"
     ]
 
     config_path = f"{tmp_dir}/config.json" # path to config file
@@ -102,8 +123,6 @@ def setup_run(config):
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
     config["config_file"] = config_path
-
-    setdict(config,("Resources","Estimated memory"),f'mem_mb={getdict(config,("Resources","Estimated memory"))}')
 
     return config
 
@@ -116,18 +135,20 @@ def run_workflow(snakefile, config):
         "--use-conda"
     ]
     optional_args = {("Resources","Threads"):"--cores",("Resources","Estimated memory"):"--resources"}
-    for arg in optional_args:
-        if getdict(config,arg):
-            command += [optional_args[arg], str(getdict(config,arg))]
+    try:
+        for arg in optional_args:
+            if getdict(config,arg):
+                command += [optional_args[arg], str(getdict(config,arg))]
+    except: pass
     try:
         if not "resume" in config:
-            subprocess.call(command, cwd=config["tmp_dir"])
+            subprocess.run(command, cwd=config["tmp_dir"])
         else:
-            subprocess.call(command + ["--unlock"], cwd=config["tmp_dir"])
-            subprocess.call(command + ["--rerun-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--rerun-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
         #for output_file in config["output"]:
         #    os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file}")
-        if not config["keep_files"]:
+        if not getdict(config,("TELR parameters","Additional options","Keep intermediate files")):
             rmtree(config['tmp_dir'])
     except Exception as e:
         print(e)
