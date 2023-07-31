@@ -30,11 +30,11 @@ def filter_region_bed(bed_in, region_filter, bed_out):
     """
     Filter BED file by given regions
     """
-    with open(bed_out, "w") as output:
-        subprocess.call(
-            ["bedtools", "intersect", "-a", bed_in, "-b", region_filter, "-u"],
-            stdout=output,
-        )
+    #with open(bed_out, "w") as output:
+    output = subprocess.check_output(
+        ["bedtools", "intersect", "-a", bed_in, "-b", region_filter, "-u"],
+        text=True,
+    )
 
 
 def filter_annotation(
@@ -141,3 +141,29 @@ def format_time(time):
         return "%d minutes %d seconds" % (d.minute, d.second)
     else:
         return "%d hours %d minutes %d seconds" % (d.hour, d.minute, d.second)
+
+def rename_chromosome(infile, output, chrom_dict="A4"):
+    if chrom_dict == "A4":
+        chrom_dict = {
+            "CM010541.1":"chrX",
+            "CM010542.1":"chr2L",
+            "CM010543.1":"chr2R",
+            "CM010544.1":"chr3L",
+            "CM010545.1":"chr3R",
+            "CM010546.1":"chr4"
+        }
+    elif not type(chrom_dict) is dict:
+        with open(chrom_dict,"r") as chrom_json:
+            chrom_dict = json.load(chrom_dict)
+    f = open(infile,"r")
+    bed_text = f.read()
+    f.close()
+
+    for key in chrom_dict:
+        bed_text = bed_text.replace(key,chrom_dict[key])
+    
+    with open(output,"w") as out:
+        out.write(bed_text)
+
+if __name__ == '__main__':
+    globals()[sys.argv[1]](*sys.argv[2:])
