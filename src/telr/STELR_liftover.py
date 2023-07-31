@@ -442,9 +442,9 @@ def choose_report(out_file, *input_files):
         # if single flank mode is turned on, inspect single flanks and report as lifted
         # if single_flank:
         if len(flanks["5p"]["alignment_coords"]) == 1 and len(flanks["3p"]["alignment_coords"]) == 0:
-            best_report = single_flank_liftover(flanks, "5p", lift_entry, strand, ref_bed)
+            best_report = single_flank_liftover(flanks, "5p", lift_entry, strand, ref_bed, te_dict["family"])
         elif len(flanks["5p"]["alignment_coords"]) == 0 and len(flanks["3p"]["alignment_coords"]) == 1:
-            best_report = single_flank_liftover(flanks, "3p", lift_entry, strand, ref_bed)
+            best_report = single_flank_liftover(flanks, "3p", lift_entry, strand, ref_bed, te_dict["family"])
         
 
     # write
@@ -461,7 +461,7 @@ def is_reference(distance_5p, distance_3p, lift_gap):
         and -distance_3p <= lift_gap
     )
 
-def single_flank_liftover(flank_info, flank, lift_entry, strand, ref_bed):
+def single_flank_liftover(flank_info, flank, lift_entry, strand, ref_bed, family):
     flank_info = flank_info[flank]
 
     with open(flank_info["info_file"], "r") as input:
