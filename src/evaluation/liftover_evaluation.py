@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import sys
 import subprocess
 import glob
 import json
@@ -266,6 +267,34 @@ def main():
     with open(eval_out, "w") as output:
         json.dump(summary_dict, output, indent=4, sort_keys=False)
 
+def give_output_info(pred_filtered, pred_json, out_file):
+        # read data into set
+    te_ids = set()
+    with open(pred_filtered) as f:
+        for line in f:
+            line = line.strip().split("\t")
+            te_id = "_".join(line[0:4])
+            te_ids.add(te_id)
+
+    with open(pred_json, "r") as input, open(out_file, "w") as output:  # TODO: mention this in the doc
+        telr_json = json.load(input)
+        for item in telr_json:
+            te_id = item["ID"]
+            if te_id in te_ids:
+                af = item["allele_frequency"]
+                support = item["support"]
+                if af is not None and support == "both_sides":
+                    family = item["family"]
+                    chrom = item["chrom"]
+                    start = item["start"]
+                    end = item["end"]
+                    strand = item["strand"]
+                    out_line = "\t".join(
+                        [chrom, str(start), str(end), family, ".", strand]
+                    )
+                    output.write(out_line + "\n")
+
 
 if __name__ == "__main__":
-    main()
+    globals()[sys.argv[1]](*sys.argv[2:])
+    #main()
