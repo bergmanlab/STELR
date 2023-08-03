@@ -205,7 +205,7 @@ def main():
     print(
         "Number of TELR False positives:" + str(num_fp)
     )  # TEs predicted by TELR that are false positives
-
+#############
     # get telr only set # TODO: do I need this?
     telr_only = args.out + "/" + prefix + ".telr_only.bed"
     with open(telr_only, "w") as output:
@@ -248,6 +248,15 @@ def main():
     num_fn = count_lines(lift_only)
     print("Number of false negatives:" + str(num_fn))
 
+def output(prefix, all_telr_predictions, true_positives, false_negatives, annotation_filtered, eval_out):
+    num_pred_total = count_lines(telr_predictions)
+    print(f"Total TELR predictions: {num_pred_total}")
+    num_tp = count_lines(true_positives)
+    print(f"Number of TELR true positives: {num_tp}")
+    num_fp = num_pred_total - num_tp
+    print(f"Number of TELR false positives: {num_fp}")
+    num_fn = count_lines(false_negatives)
+    print(f"Number of false negatives: {num_fn}")
     precision = round(num_tp / num_pred_total, 3)
     num_liftover = count_lines(annotation_filtered)
     recall = round(num_tp / num_liftover, 3)
@@ -263,7 +272,6 @@ def main():
     }
 
     # write
-    eval_out = args.out + "/eval_liftover.json"
     with open(eval_out, "w") as output:
         json.dump(summary_dict, output, indent=4, sort_keys=False)
 
@@ -294,6 +302,34 @@ def give_output_info(pred_filtered, pred_json, out_file):
                     )
                     output.write(out_line + "\n")
 
+def parse_overlap(overlap, outfile, relax_mode = False):
+    if type(relax_mode) is str:
+        if relax_mode.lower() == "false": relax_mode = False
+    # parse overlap file and get the number of matched insertions
+    match_set = set()
+    with open(overlap, "r") as input:
+        for line in input:
+            entry = line.replace("\n", "").split("\t")
+            family1 = string2set(entry[3], delimiter="|")  # telr
+            family2 = string2set(entry[9], delimiter="|")  # liftover
+            if relax_mode:
+                if (
+                    len(family1.intersection(family2)) > 0
+                ):  # TODO: think about nested insertions, should I remove them in both set?
+                    te_locus = "_".join([entry[0], entry[1], entry[2], entry[3]])
+                    match_set.add(te_locus)
+                else:
+                    print(line)
+            else:
+                if (
+                    family1 == family2
+                ):  # TODO: think about nested insertions, should I remove them in both set?
+                    te_locus = "_".join([entry[0], entry[1], entry[2], entry[3]])
+                    match_set.add(te_locus)
+                else:
+                    print(line)
+    with open(out_file,"w") as output:
+        output.write("\n".join(match_set))
 
 if __name__ == "__main__":
     globals()[sys.argv[1]](*sys.argv[2:])
