@@ -120,18 +120,29 @@ def sv_detector(wildcards):
         return "Sniffles1"
 def parse_vcf_input(wildcards):
     return f"sv-reads_{sv_detector(wildcards)}.vcf"
+#rule parse_vcf:
+#    input:
+#        parse_vcf_input
+#    output:
+#        "reads.vcf_parsed.tsv.tmp"
+#    params:
+#        lambda wildcards: {
+#            "Sniffles1":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%RE\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n',
+#            "Sniffles2":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n'
+#        }[sv_detector(wildcards)]
+#    shell:
+#        'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
+
+#temporary measure to handle Sniffles1 output formatting issue, which causes an error when calling bcftools on it
 rule parse_vcf:
     input:
         parse_vcf_input
     output:
         "reads.vcf_parsed.tsv.tmp"
-    params:
-        lambda wildcards: {
-            "Sniffles1":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%RE\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n',
-            "Sniffles2":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n'
-        }[sv_detector(wildcards)]
     shell:
-        'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
+        """
+        python3 {config[STELR_sv]} bcftools {input} {output}
+        """
 
 rule swap_vcf_coordinate:
     input:
@@ -171,9 +182,9 @@ rule sv_repeatmask:
         "vcf_ins_repeatmask/{ins_seqs}.out.gff"
     params:
         repeatmasker_dir = "vcf_ins_repeatmask",
-        thread = config["thread"]
+    threads: 20
     shell:
-        "python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{params.thread}'"
+        "python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'"
 
 rule sv_RM_sort:
     input:
@@ -249,18 +260,18 @@ rule get_read_ids: # get a list of all the read IDs from the parsed vcf file
 
 rule unique_IDlist: # get a list of unique IDs from the readlist
     input:
-        "contigs/{contig}/00_{readlist}.id"
+        "contigs/{contig}/00_reads.id"
     output:
-        "contigs/{contig}/00_{readlist}.id.unique"
+        "contigs/{contig}/00_reads.id.unique"
     shell:
         "cat '{input}' | sort | uniq > '{output}'"
 
 rule filter_readlist: # use seqtk to get the fasta reads from the input reads file
     input:
         reads = config["fasta_reads"],
-        unique = "contigs/{contig}/00_{readlist}.id.unique"
+        unique = "contigs/{contig}/00_reads.id.unique"
     output:
-        "contigs/{contig}/00_{readlist}.fa"
+        "contigs/{contig}/00_reads.fa"
     shell:
         "seqtk subseq '{input.reads}' '{input.unique}' | seqtk seq -a > '{output}'"
 
@@ -542,7 +553,7 @@ rule ref_repeatmask:
         "ref_repeatmask/{reference}.out"
     params:
         ref_rm_dir = "ref_repeatmask"
-    threads: config["thread"]
+    threads: 20
     shell:
         """
         if [ ! -d '{params.ref_rm_dir}' ]; then mkdir '{params.ref_rm_dir}'

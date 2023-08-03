@@ -5,7 +5,7 @@ import pandas as pd
 import logging
 import time
 from Bio import SeqIO
-from STELR_utility import mkdir, format_time, create_loci_set, get_contig_name
+from STELR_utility import mkdir, format_time, create_loci_set, get_contig_name, output_writer
 
 
 def detect_sv(
@@ -244,6 +244,37 @@ def af_sum(nums):
     if sum_nums > 1:
         sum_nums = 1
     return sum_nums
+
+def bcftools(input_file, output_file = "stdout"):
+    def getinfo(line, info, delimiter=";", format=str):
+        info = info.upper()
+        return format(line.split(f"{info}=")[1].split(delimiter)[0])
+    inv_entries = []
+    with open(input_file,"r") as input:
+        index = 0
+        for line in input:
+            index += 1
+            #if index > 150: break
+            if line[0] == "#" or "STRANDBIAS" in line: continue
+            if "SVTYPE=INS" in line and not line.split("\t")[4] == "<INS>": 
+                inv_entries.append(line.strip())
+    with output_writer(output_file) as output:
+        for line in inv_entries:
+            entry = line.split("\t")
+            chrom = entry[0]
+            pos = entry[1]
+            end = getinfo(line, "end")
+            svlen = getinfo(line, "svlen")
+            re = getinfo(line, "re")
+            af = getinfo(line, "af", None)
+            iD = entry[2]#figure out ID
+            alt = entry[4]
+            rnames = getinfo(line, "rnames")
+            filtr = entry[6]
+            rnames = getinfo(line, "rnames")
+            gt, dr, dv = entry[-1].split(":")
+            output.write(f"{chrom}\t{pos}\t{end}\t{svlen}\t{re}\t{af}\t{iD}\t{alt}\t{rnames}\t{filtr}\t{gt}\t{dr}\t{dv}\n")
+
 
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])

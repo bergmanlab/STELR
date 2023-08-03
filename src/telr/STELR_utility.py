@@ -181,5 +181,20 @@ def memory_format(data, units="mb"):
     except:
         raise Exception(f"Unable to interpret memory value {inpt}")
 
+class output_writer:
+    def __init__(self,output="stdout"):
+        if output == "stdout":
+            self.type = "printer"
+            self.write = lambda string: print(string,end="")
+        else: 
+            self.type = "writer"
+            self.writer = open(output, "w")
+            self.write = lambda string: self.writer.write(string)
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if self.type == "writer":
+            self.writer.close()
+            
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])
