@@ -124,7 +124,6 @@ checkpoint run_telr:
     conda: config["telr_conda"]
     shell:
         """
-        pip install /home/hkg58926/github/TELR/
         {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
         """
 
@@ -279,7 +278,7 @@ rule filter_telr_family:
         python3 {config[eval_utility]} filter_family_bed {input.telr_output} {params.family_filter} {output} "exclude"
         """
 
-rule filtered_output_with_info:
+rule filtered_output_with_info:#total
     input:
         "liftover_eval/filter_telr_family.bed",
         rename_json
@@ -289,3 +288,61 @@ rule filtered_output_with_info:
         """
         python3 {config[liftover_evaluation]} give_output_info {input} {output}
         """
+
+rule compare_liftover:
+    input:
+        pred_filtered = "liftover_eval/filtered_telr_info.bed",
+        annotation_filtered = "liftover_eval/filter_annotation_family.bed"
+    output:
+        "liftover_eval/telr_liftover_overlap.bed"
+    params:
+        window = 5
+    shell:
+        """
+        bedtools window -w {params.window} -a {input.pred_filtered} -b {input.annotation_filtered} -v > {output}
+        """
+
+rule parse_overlap:#tp
+    input:
+        "liftover_eval/telr_liftover_overlap.bed"
+    output:
+        "liftover_eval/parsed_liftover_overlap.bed"
+    params:
+        relax_mode = "false"
+    shell:
+        """
+        python3 {config[liftover_evaluation]} parse_overlap {input} {output} {params.relax_mode}
+        """
+
+rule liftover_only:#fn
+    input:
+        pred_filtered = "liftover_eval/filtered_telr_info.bed",
+        annotation_filtered = "liftover_eval/filter_annotation_family.bed"
+    output:
+        "liftover_eval/liftover_only.bed"
+    params:
+        window = 5
+    shell:
+        """
+        bedtools window -w {params.window} -a {input.annotation_filtered} -b {input.pred_filtered} -v > {output}
+        """
+
+rule parse_overlap_2:
+    input:
+        all_telr_predictions = "liftover_eval/filtered_telr_info.bed",
+        true_positives = "liftover_eval/parsed_liftover_overlap.bed",
+        false_negatives = "liftover_eval/liftover_only.bed",
+        annotation_filtered = "liftover_eval/filter_annotation_family.bed"
+    output:
+        "liftover_eval/eval_liftover.json"
+    params:
+        prefix = config["reads_name"]
+    shell:
+        """
+        python3 {config[liftover_evaluation]} parse_overlap {params.prefix} {input} {output}
+        """
+
+
+#echo "hello$(wc -l < reads_sort.telr.bed)"
+
+#echo "hello$(($(wc -l < reads_sort.telr.bed) - $(wc -l < reads_sort.telr.json)))"
