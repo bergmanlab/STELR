@@ -120,25 +120,25 @@ def sv_detector(wildcards):
         return "Sniffles1"
 def parse_vcf_input(wildcards):
     return f"sv-reads_{sv_detector(wildcards)}.vcf"
-#rule parse_vcf:
-#    input:
-#        parse_vcf_input
-#    output:
-#        "reads.vcf_parsed.tsv.tmp"
-#    params:
-#        lambda wildcards: {
-#            "Sniffles1":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%RE\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n',
-#            "Sniffles2":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n'
-#        }[sv_detector(wildcards)]
-#    shell:
-#        'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
-
-#temporary measure to handle Sniffles1 output formatting issue, which causes an error when calling bcftools on it
 rule parse_vcf:
     input:
         parse_vcf_input
     output:
         "reads.vcf_parsed.tsv.tmp"
+    params:
+        lambda wildcards: {
+            "Sniffles1":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%RE\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n',
+            "Sniffles2":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n'
+        }[sv_detector(wildcards)]
+    shell:
+        'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
+
+#temporary measure to handle Sniffles1 output formatting issue, which causes an error when calling bcftools on it
+rule bcftols_bypass:
+    input:
+        parse_vcf_input
+    output:
+        ""#"reads.vcf_parsed.tsv.tmp"
     shell:
         """
         python3 {config[STELR_sv]} bcftools {input} {output}
@@ -831,7 +831,7 @@ rule get_reverse_complement:
 rule realignment:
     input:
         contig = "contigs/{contig}/{contig_revcomp}.fa",
-        reads = "contigs/{contig}/00_read_context.fa"
+        reads = "contigs/{contig}/00_reads.fa"#TODO check this
     output:
         "contigs/{contig}/{contig_revcomp}_realign.sam"
     params:
