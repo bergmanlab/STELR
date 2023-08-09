@@ -287,7 +287,7 @@ rule build_index:
     threads: config["threads"]
     shell:
         """
-        samtools faidx -@ {threads} '{input}' || true
+        samtools faidx '{input}' || true
         touch {output}
         """
 

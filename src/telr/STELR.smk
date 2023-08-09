@@ -389,9 +389,8 @@ rule build_index:
         "{genome}"
     output:
         "{genome}.fai"
-    threads: 1
     shell:
         """
-        samtools faidx -@ {threads} '{input}' || true
+        samtools faidx '{input}' || true
         touch {output}
         """
