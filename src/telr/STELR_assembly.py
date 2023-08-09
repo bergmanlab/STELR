@@ -7,7 +7,8 @@ import logging
 from Bio import SeqIO
 from multiprocessing import Pool
 import pysam
-from STELR_utility import mkdir, check_exist, format_time, get_contig_name, read_vcf
+import json
+from STELR_utility import mkdir, check_exist, format_time, get_contig_name, read_vcf, stdlen_num
 
 
 def parse_assembled_contig(input_contig, contig_name, parsed_contig):
@@ -226,7 +227,7 @@ def extract_reads(reads, id_list, out):
         for entry in ID:
             entry = entry.replace("\n", "")
             output_handle.write(record_dict.get_raw(entry))
-
+'''
 def make_contig_dir(vcf_parsed_full, contig_name, vcf_parsed_contig):
     contigs_dir = vcf_parsed_contig[:vcf_parsed_contig.index(f"/{contig_name}")]
     mkdir(contigs_dir, verbose = False)
@@ -234,6 +235,55 @@ def make_contig_dir(vcf_parsed_full, contig_name, vcf_parsed_contig):
     mkdir(contig_dir)
     with open(vcf_parsed_contig, "w") as output:
         output.write("\t".join(read_vcf(vcf_parsed_full, contig_name)))
+'''
+def make_contig_dir(info):
+        line, contig_id, standard_info = info
+        max_threads_per_contig, threads_per_read, contigs_dir, master_config = standard_info
+        threads = max(1, round(threads_per_read/len(line.split(","))*max_threads_per_contig))
+        contig_dir = f"{contigs_dir}/{contig_id}"
+        mkdir(contig_dir, verbose = False)
+        with open(f"{contig_dir}/00_vcf_parsed.tsv","w") as output:
+            output.write(line)
+        config = {
+            "threads":threads,
+            "contig_id":contig_id,
+            "contig_name":get_contig_name(line.split("\t"))
+        }
+        config.update(master_config)
+        with open(f"{contig_dir}/config.json","w") as output:
+            json.dump(config, output)
+
+def make_contig_dirs(vcf_parsed, config, threads):
+    threads = int(threads)
+    contigs_dir = f"{os.path.abspath('.')}/contigs"
+    mkdir(contigs_dir, verbose = False)
+    #import necessary information from master config
+    with open(config, "r") as input:
+        config = json.load(input)
+        needed_info = [
+            #STELR source code
+            "STELR_utility","STELR_assembly","STELR_te","STELR_liftover","STELR_output",
+            #Input & intermediate files
+            "fasta_reads","library","reference",
+            #STELR params
+            "assembler","presets","polisher","polish_iterations","different_contig_name","overlap","gap","af_te_interval","af_te_offset","af_flank_interval","af_flank_offset","flank_len"
+            ]
+        config = {info:config[info] for info in needed_info}
+    lens = []
+    lines = []
+    with open(vcf_parsed, "r") as input:
+        for line in input:
+            line = line.replace("\n","")
+            lines.append(line)
+            lens.append(len(line.split(",")))
+    max_threads_per_contig = min(threads,4)
+    threads_per_read = max(lens)/max_threads_per_contig
+    num_contigs = len(lines)
+    standard_info = [max_threads_per_contig, threads_per_read, contigs_dir, config]
+    contig_ids = {f"contig{x+1}":lines[x] for x in range(len(lines))}
+    pool_list = [[contig_ids[x], x, standard_info] for x in contig_ids]
+    with Pool(processes=threads) as pool:
+        pool.map(make_contig_dir, pool_list)
 
 def make_contig_file(vcf_parsed, contig_name, contig_file, reads):
     # get all of the read names for the matching contig
