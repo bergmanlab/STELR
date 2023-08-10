@@ -36,6 +36,7 @@ def handle_file_paths(config):
     for file in source_files:
         config[f"STELR_{file}"] = f"{telr_dir}/STELR_{file}.py"
     config["smk"] = f"{telr_dir}/STELR.smk"
+    config["STELR_contig"] = f"{telr_dir}/STELR_contig.smk"
     config["fix_ngmlr"] = f"{telr_dir}/fix_ngmlr.py"
     env_dir = telr_dir.split("src")[0] + "envs"
     config["envs"] = {}

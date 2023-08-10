@@ -6,7 +6,8 @@ import json
 from Bio import SeqIO
 from datetime import date
 import subprocess
-from STELR_utility import check_exist
+import glob
+from STELR_utility import check_exist, abs_path
 
 def write_vcf(input, ref, ref_index, out_vcf):
     ref_info = get_contig_info(ref_index)
@@ -71,7 +72,7 @@ def get_contig_info(reference_index):
             contig_info.append("##contig=<ID={},length={}>".format(entry[0], entry[1]))
     return contig_info
 
-def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, contig_file, json_output):
+def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, contig_file, json_output, contig_name):
     with open(liftover_file, "r") as data:
         liftover_report = json.load(data)
     if not "type" in liftover_report:
@@ -88,8 +89,7 @@ def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, c
             "ref_count":sniffles_info[11]
         }
     sequence = subprocess.run(f"bedtools getfasta -fi '{contig_file}' -bed '{annotation_file}' -s", shell=True, capture_output=True, text=True).stdout.split("\n")[1]
-    contig_name = liftover_file.split("contigs/")[1].split("/tes/")[0]
-    te_name = liftover_file.split("/tes/")[1].split("/")[0]
+    te_name = liftover_file.split("tes/")[1].split("/")[0]
     te_start, te_end = [int(index) for index in te_name.replace("te_","").split("_")]
     contig_length = 0
     with open(contig_file, "r") as data:
@@ -151,7 +151,7 @@ def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, c
     output_information = {
         "expanded_json":full_report,
         "json":basic_report,
-        "contig_path":contig_file,
+        "contig_path":abs_path(contig_file),
         "te_fasta":f">{full_report['ID']}\n{full_report['te_sequence']}\n",
         "contig_name":contig_name,
         "bed_out":f"{full_report['chrom']}\t{full_report['start']}\t{full_report['end']}\t{full_report['family']}\t.\t{full_report['strand']}\n"
@@ -160,8 +160,9 @@ def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, c
     with open(json_output, "w") as output:
         json.dump(output_information, output)
     
-def write_output(contig_fa_outfile, te_fa_outfile, bed_outfile, json_outfile, expanded_json_outfile, vcf_outfile, reference, reference_index, *json_files):
+def write_output(contig_fa_outfile, te_fa_outfile, bed_outfile, json_outfile, expanded_json_outfile, vcf_outfile, reference, reference_index, output_pattern):
     contigs = {}
+    json_files = [file for file in glob.glob(f"contigs/*/tes/*/{output_pattern}") if check_exist(file)]
     for file in json_files:
         try:
             with open(file, "r") as data:

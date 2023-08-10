@@ -5,6 +5,7 @@ import subprocess
 from Bio import SeqIO
 from functools import reduce
 from operator import getitem
+import glob
 
 
 def rm_file(file):
@@ -181,6 +182,21 @@ def memory_format(data, units="mb"):
     except:
         raise Exception(f"Unable to interpret memory value {inpt}")
 
+def stdlen_num(number,quantity=999):
+    number, quantity = str(number), str(quantity)
+    try:
+        return {
+            0: number,
+            1: lambda n: f"0{n}",
+            2: lambda n: f"00{n}",
+            3: lambda n: f"000{n}"
+
+        }[len(quantity)-len(number)](number)
+    except:
+        while len(number) < len(quantity):
+            number = f"0{number}"
+        return number
+
 class output_writer:
     def __init__(self,output="stdout"):
         if output == "stdout":
@@ -195,6 +211,12 @@ class output_writer:
     def __exit__(self, exc_type, exc_value, exc_tb):
         if self.type == "writer":
             self.writer.close()
+
+def progress_bar(*args):
+    contigs_done = len(glob.glob("contigs/*/.complete"))+1
+    contigs_todo = len(glob.glob("contigs/*/config.json"))
+    return f"{contigs_done} out of {contigs_todo}"
+
             
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])

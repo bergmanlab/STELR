@@ -30,13 +30,15 @@ def get_vcf_seq(contig, vcf_parsed, sequence_file):
 def vcf_alignment_filter(intersect_file, output_file):
     with open(intersect_file, "r") as input, open(output_file, "w") as output:
         for line in input:
-            entry = line.replace("\n", "").split("\t")
-            # the overlap between VCF sequence alignment and TE-contig alignment has to be over 10bp
-            if int(entry[12]) > 10:
-                out_line = "\t".join(
-                    [entry[0], entry[1], entry[2], entry[3], entry[4], entry[5]]
-                )
-                output.write(out_line + "\n")
+            try:
+                entry = line.replace("\n", "").split("\t")
+                # the overlap between VCF sequence alignment and TE-contig alignment has to be over 10bp
+                if int(entry[12]) > 10:
+                    out_line = "\t".join(
+                        [entry[0], entry[1], entry[2], entry[3], entry[4], entry[5]]
+                    )
+                    output.write(out_line + "\n")
+            except: pass
 
 def annotate_contig(merged_output, annotation_file):
     te_dir = annotation_file[:annotation_file.rindex("/")]
