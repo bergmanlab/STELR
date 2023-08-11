@@ -21,7 +21,8 @@ def get_contig_name(some_input):
             some_input = abs_path(some_input)
             if "contigs/" in some_input:
                 some_input = some_input[some_input.index("contigs/")+8:]
-                return some_input[:some_input.index("/")] 
+                return some_input[:some_input.index("/")]
+        except: pass
 
 
 def mkdir(dir, verbose = True):
