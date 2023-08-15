@@ -216,6 +216,9 @@ def write_read_IDs(vcf_parsed, contig_name, output_file):
         for read in read_list:
             output.write(read + "\n")
 
+def af_read_IDs(vc):
+    pass#TODO
+
 def extract_reads(reads, id_list, out):
     """Extract reads from fasta using read ID list"""
     record_dict = SeqIO.index(reads, "fasta")
@@ -267,7 +270,7 @@ def make_contig_dirs(vcf_parsed, config, threads):
             #Input & intermediate files
             "fasta_reads","library","reference",
             #STELR params
-            "assembler","presets","polisher","polish_iterations","different_contig_name","overlap","gap","af_te_interval","af_te_offset","af_flank_interval","af_flank_offset","flank_len"
+            "assembler","presets","polisher","polish_iterations","different_contig_name","overlap","gap","af_te_interval","af_te_offset","af_flank_interval","af_flank_offset","flank_len","minimap2_family"
             ]
         config = {info:config[info] for info in needed_info}
     lens = []
