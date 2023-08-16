@@ -32,9 +32,9 @@ rule get_read_ids: # get a list of all the read IDs from the parsed vcf file
 
 rule unique_IDlist: # get a list of unique IDs from the readlist
     input:
-        "00_reads.id"
+        "{read_ids}.id"
     output:
-        "00_reads.id.unique"
+        "{read_ids}.id.unique"
     shell:
         "cat '{input}' | sort | uniq > '{output}'"
 
@@ -46,9 +46,9 @@ def fasta_reads(wildcards):
 rule filter_readlist: # use seqtk to get the fasta reads from the input reads file
     input:
         reads = fasta_reads,
-        unique = "00_reads.id.unique"
+        unique = "{read_ids}.id.unique"
     output:
-        "00_reads.fa"
+        "{read_ids}.fa"
     shell:
         "seqtk subseq '{input.reads}' '{input.unique}' | seqtk seq -a > '{output}'"
 
@@ -95,7 +95,6 @@ Contig TE annotation (minimap2 + RepeatMasker)
 
 rule get_vcf_seq:
     input:
-        contig = "00_reads.fa",
         vcf_parsed = "00_vcf_parsed.tsv"
     output:
         "04_vcf_seq.fa"
@@ -271,9 +270,12 @@ rule rm_reannotate:
 Identify TE insertion breakpoint (minimap2)
 '''
 
+def te_annotation(wildcards):
+    return {True:f"tes/{wildcards.te}/00_annotation.bed",False:f"tes/{wildcards.te}/rm_05_annotation.bed"}[config["minimap2_family"]]
+
 rule make_te_json:
     input:
-        "tes/{te}/00_annotation.bed"
+        te_annotation
     output:
         "tes/{te}/00_annotation.json"
     shell:
@@ -500,7 +502,7 @@ rule get_reverse_complement:
 rule realignment:
     input:
         contig = "{contig_revcomp}.fa",
-        reads = "00_reads.fa"#TODO check this
+        reads = "00_read_context.fa"#TODO check this
     output:
         "{contig_revcomp}_realign.sam"
     params:
@@ -614,7 +616,7 @@ rule individual_json:
         liftover_file = "tes/{te}/17_best_report.json",
         af_file = "tes/{te}/11_allele_frequency.json",
         vcf_parsed = "00_vcf_parsed.tsv",
-        annotation_file = "tes/{te}/00_annotation.bed",
+        annotation_file = te_annotation,
         contig_file = "03_contig1.fa"
     output:
         "tes/{te}/18_output.json"

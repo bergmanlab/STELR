@@ -216,9 +216,6 @@ def write_read_IDs(vcf_parsed, contig_name, output_file):
         for read in read_list:
             output.write(read + "\n")
 
-def af_read_IDs(vc):
-    pass#TODO
-
 def extract_reads(reads, id_list, out):
     """Extract reads from fasta using read ID list"""
     record_dict = SeqIO.index(reads, "fasta")
