@@ -191,15 +191,6 @@ checkpoint annotate_contig:
         python3 {config[STELR_te]} annotate_contig '{input}' '{output}'
         """
 
-rule make_te_dirs:
-    input:
-        "tes/annotation.bed"
-    output:
-        "tes/{te}/00_annotation.bed"
-    shell:
-        "python3 {config[STELR_te]} make_te_dir '{input}' '{output}'"
-
-
 ## use RM to annotate config
 
 rule rm_te_fasta:
@@ -271,11 +262,18 @@ Identify TE insertion breakpoint (minimap2)
 '''
 
 def te_annotation(wildcards):
-    return {True:f"tes/{wildcards.te}/00_annotation.bed",False:f"tes/{wildcards.te}/rm_05_annotation.bed"}[config["minimap2_family"]]
+    return {True:f"tes/annotation.bed",False:f"rm_05_annotation.bed"}[config["minimap2_family"]]
+rule make_te_dirs:
+    input:
+        te_annotation
+    output:
+        "tes/{te}/00_annotation.bed"
+    shell:
+        "python3 {config[STELR_te]} make_te_dir '{input}' '{output}'"
 
 rule make_te_json:
     input:
-        te_annotation
+        "tes/{te}/00_annotation.bed"
     output:
         "tes/{te}/00_annotation.json"
     shell:
@@ -616,7 +614,7 @@ rule individual_json:
         liftover_file = "tes/{te}/17_best_report.json",
         af_file = "tes/{te}/11_allele_frequency.json",
         vcf_parsed = "00_vcf_parsed.tsv",
-        annotation_file = te_annotation,
+        annotation_file = "tes/{te}/00_annotation.bed",
         contig_file = "03_contig1.fa"
     output:
         "tes/{te}/18_output.json"
