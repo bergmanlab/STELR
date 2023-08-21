@@ -2,6 +2,9 @@ import sys
 import json
 import os
 import traceback
+telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
+sys.path.insert(0,telr_dir)
+from STELR_utility import memory_format
 
 def config_from_file(file_path):
     f = open(file_path, "r")
@@ -94,6 +97,7 @@ def config_from_file(file_path):
                         elif line.check:
                             category[title][subtitle] = line.item
                     except: pass
+    category["resources"]["estimated memory"] = memory_format(category["resources"]["estimated memory"])
     return category
 
 class checkline:
