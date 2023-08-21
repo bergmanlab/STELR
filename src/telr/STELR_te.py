@@ -102,6 +102,7 @@ def rm_reannotate(rm_raw, original_bed, output_file):
             entry = line.replace("\n", "").split("\t")
             contig_name = entry[0]
             family = entry[3]
+            family = "|".join(set(te.split(";")[-1] for te in entry[3].split("|")))
             contig_rm_family_dict[contig_name] = family
 
     with open(output_file, "w") as output, open(original_bed, "r") as input:
