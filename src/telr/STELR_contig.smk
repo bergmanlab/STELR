@@ -32,9 +32,9 @@ rule get_read_ids: # get a list of all the read IDs from the parsed vcf file
 
 rule unique_IDlist: # get a list of unique IDs from the readlist
     input:
-        "00_reads.id"
+        "{read_ids}.id"
     output:
-        "00_reads.id.unique"
+        "{read_ids}.id.unique"
     shell:
         "cat '{input}' | sort | uniq > '{output}'"
 
@@ -46,9 +46,9 @@ def fasta_reads(wildcards):
 rule filter_readlist: # use seqtk to get the fasta reads from the input reads file
     input:
         reads = fasta_reads,
-        unique = "00_reads.id.unique"
+        unique = "{read_ids}.id.unique"
     output:
-        "00_reads.fa"
+        "{read_ids}.fa"
     shell:
         "seqtk subseq '{input.reads}' '{input.unique}' | seqtk seq -a > '{output}'"
 
@@ -95,7 +95,6 @@ Contig TE annotation (minimap2 + RepeatMasker)
 
 rule get_vcf_seq:
     input:
-        contig = "00_reads.fa",
         vcf_parsed = "00_vcf_parsed.tsv"
     output:
         "04_vcf_seq.fa"
@@ -192,15 +191,6 @@ checkpoint annotate_contig:
         python3 {config[STELR_te]} annotate_contig '{input}' '{output}'
         """
 
-rule make_te_dirs:
-    input:
-        "tes/annotation.bed"
-    output:
-        "tes/{te}/00_annotation.bed"
-    shell:
-        "python3 {config[STELR_te]} make_te_dir '{input}' '{output}'"
-
-
 ## use RM to annotate config
 
 rule rm_te_fasta:
@@ -270,6 +260,16 @@ rule rm_reannotate:
 '''3rd stage
 Identify TE insertion breakpoint (minimap2)
 '''
+
+def te_annotation(wildcards):
+    return {True:f"tes/annotation.bed",False:f"rm_05_annotation.bed"}[config["minimap2_family"]]
+rule make_te_dirs:
+    input:
+        te_annotation
+    output:
+        "tes/{te}/00_annotation.bed"
+    shell:
+        "python3 {config[STELR_te]} make_te_dir '{input}' '{output}'"
 
 rule make_te_json:
     input:
@@ -500,7 +500,7 @@ rule get_reverse_complement:
 rule realignment:
     input:
         contig = "{contig_revcomp}.fa",
-        reads = "00_reads.fa"#TODO check this
+        reads = "00_read_context.fa"#TODO check this
     output:
         "{contig_revcomp}_realign.sam"
     params:

@@ -237,7 +237,8 @@ def make_contig_dir(vcf_parsed_full, contig_name, vcf_parsed_contig):
         output.write("\t".join(read_vcf(vcf_parsed_full, contig_name)))
 '''
 def make_contig_dir(info):
-        line, contig_id, standard_info = info
+        line, standard_info = info
+        contig_id = get_contig_name(line.split("\t"))
         max_threads_per_contig, threads_per_read, contigs_dir, master_config = standard_info
         threads = max(1, round(threads_per_read/len(line.split(","))*max_threads_per_contig))
         contig_dir = f"{contigs_dir}/{contig_id}"
@@ -266,7 +267,7 @@ def make_contig_dirs(vcf_parsed, config, threads):
             #Input & intermediate files
             "fasta_reads","library","reference",
             #STELR params
-            "assembler","presets","polisher","polish_iterations","different_contig_name","overlap","gap","af_te_interval","af_te_offset","af_flank_interval","af_flank_offset","flank_len"
+            "assembler","presets","polisher","polish_iterations","different_contig_name","overlap","gap","af_te_interval","af_te_offset","af_flank_interval","af_flank_offset","flank_len","minimap2_family"
             ]
         config = {info:config[info] for info in needed_info}
     lens = []
@@ -280,8 +281,8 @@ def make_contig_dirs(vcf_parsed, config, threads):
     threads_per_read = max(lens)/max_threads_per_contig
     num_contigs = len(lines)
     standard_info = [max_threads_per_contig, threads_per_read, contigs_dir, config]
-    contig_ids = {f"contig{x+1}":lines[x] for x in range(len(lines))}
-    pool_list = [[contig_ids[x], x, standard_info] for x in contig_ids]
+    contigs = [lines[x] for x in range(len(lines))]
+    pool_list = [[contig, standard_info] for contig in contigs]
     with Pool(processes=threads) as pool:
         pool.map(make_contig_dir, pool_list)
 

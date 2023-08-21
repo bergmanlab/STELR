@@ -253,14 +253,17 @@ checkpoint initialize_contig_dirs:
         "reads.vcf_filtered.tsv",
         "config.json"
     output:
-        "contigs/contig1/config.json"
+        "contigs/.contig_dirs_made"
     threads: config["thread"]
     shell:
-        "python3 {config[STELR_assembly]} make_contig_dirs {input} {threads}"
+        """
+        python3 {config[STELR_assembly]} make_contig_dirs {input} {threads}
+        touch {output}
+        """
 
 def contig_threads(wildcards):
-    contig_config = checkpoints.initialize_contig_dirs.get(**wildcards).output[0]
-    contig_config = contig_config.replace("/contig1/",f"/{wildcards.contig}/")
+    checkpoints.initialize_contig_dirs.get()
+    contig_config = f"contigs/{wildcards.contig}/config.json"
     with open(contig_config,"r") as input:
         contig_config = json.load(input)
     return contig_config["threads"]

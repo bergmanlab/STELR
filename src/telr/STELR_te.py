@@ -96,9 +96,6 @@ def rm_parse_merge(input_file, output_file):
 
 def rm_reannotate(rm_raw, original_bed, output_file):
     # replace contig_te_annotation family with ones from RM
-    contig_te_annotation_new = contig_te_annotation_sorted.replace(
-        "bed", "family_reannotated.bed"
-    )
     contig_rm_family_dict = dict()
     with open(rm_raw, "r") as input:
         for line in input:
