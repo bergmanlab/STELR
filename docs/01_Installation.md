@@ -10,6 +10,7 @@ source $HOME/.bashrc
 
 conda init # this step requires you to close and open a new terminal before it take effect
 conda update conda # update conda
+```
 
 ### Install mamba (optional)
 Mamba is a reimplementation of the conda package manager in C++. There is significant speed improvement on STELR installation using mamba versus conda. Please use following command to install mamba into the base conda environment. You can skip this step if you already have mamba installed.
