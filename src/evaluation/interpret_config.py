@@ -4,7 +4,7 @@ import os
 import traceback
 telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
 sys.path.insert(0,telr_dir)
-from STELR_utility import memory_format
+from STELR_utility import memory_format, check_exist
 
 def config_from_file(file_path):
     f = open(file_path, "r")
@@ -35,13 +35,19 @@ def config_from_file(file_path):
                         line = checkline(line)
                         if line.check: 
                             category[title][subtitle][line.item] = line.content
+                        elif line.item == "file path or genbank accession number":
+                            if check_exist(line.content):
+                                category[title][subtitle]["file"] = line.content
+                            else: 
+                                category[title][subtitle]["accession"] = line.content
                 elif title == "simulation parameters":
                     if "seed" in line.lower():
                         category[title]["seed"] = int(line.split(":")[1].strip())
                     elif "Model:" in line:
                         subtitle = "model"
                         category[title][subtitle] = {}
-                        category[title][subtitle]["model name"] = line.split(":")[1].strip()
+                        category[title][subtitle]["model name"] = model_name = line.split(":")[1].strip()
+                        category[title][subtitle]["file"] = f"{model_name}.model"
                     elif subtitle == "model":
                         line = checkline(line)
                         if line.check: 
@@ -95,7 +101,9 @@ def config_from_file(file_path):
                         elif line.check == None:
                             subtitle = line.item
                         elif line.check:
-                            category[title][subtitle] = line.item
+                            if line.item == "telr version 1.x":
+                                category[title]["telr version 1.x"] = True
+                            else: category[title][subtitle] = line.item
                     except: pass
     category["resources"]["estimated memory"] = memory_format(category["resources"]["estimated memory"])
     return category
@@ -110,16 +118,14 @@ class checkline:
             self.item = line.split("]")[1].split("#")[0].strip()
         except:
             self.item = line.split("#")[0].strip()
+        if(self.item): self.item = self.item.lower()
         if ":" in self.item:
             self.item = self.item.split(":")[0].strip()
             self.content = line.split(":")[1].split("#")[0].strip()
-            if "use file" in self.item.lower():
-                if os.path.exists(self.content):
-                    self.item = "file"
-                else: 
-                    #self.item = None
-                    self.content = None
-        if(self.item): self.item = self.item.lower()
+        if "use file" in self.item:
+            self.item = "file"
+            if not os.path.exists(self.content):
+                self.content = None
         #self.print()
     
     def check_true(self):
