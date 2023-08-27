@@ -7,6 +7,7 @@ from STELR_utility import getdict, setdict, abs_path
 rule all:
     input:
         config["output"]
+    localrule: True
 
 
 def if_accession(wildcards):
@@ -21,6 +22,7 @@ rule download_genome:
         accession = if_accession
     output:
         "{reference}_reference.fasta"
+    localrule: True
     shell:
         """
         mkdir ncbi_temp_{params.accession}
@@ -39,6 +41,7 @@ rule download_model:
         model = config["simulation parameters"]["model"]
     output:
         "{model}.model"
+    localrule: True
     shell:
         """
         wget -L https://raw.githubusercontent.com/yukiteruono/pbsim2/master/data/{output} -O "{output}"
@@ -54,22 +57,25 @@ rule simulate_reads:
         log = "{simulation}/{cov}x_{ref_type}_simulated_reads.report"
     params:
         prefix = "{cov}x_{ref_type}_simulated_reads",
-        sub_sim_dir = "{simulation}/subsim_{ref_type}"
+        sub_sim_dir = "{simulation}/subsim_{ref_type}",
+        slurm_log = "{simulation}_simulation_slurm.log",
+        slurm_err = "{simulation}_simulation_slurm.err"
     resources: 
         mem_mb = 100000
+    group: "simulation"
     shell:
         """
         mkdir {params.sub_sim_dir}
         cd {params.sub_sim_dir}
-        pbsim --depth {wildcards.cov} --prefix {params.prefix} --id-prefix '{wildcards.ref_type}' --hmm_model '{input.model}' '{input.reference}' 2> ../{params.prefix}.report
+        pbsim --depth {wildcards.cov} --prefix {params.prefix} --id-prefix '{wildcards.ref_type}' --hmm_model {input.model} ../../{input.reference} 2> {output.log}
         cd ../..
         cat {params.sub_sim_dir}/{params.prefix}/*.fastq > {output.out}
         rm -r {params.sub_sim_dir}
         """
 
 def sub_simulations(wildcards):
-    path = "/".join(wildcards.cov.split("/")[:-1])
     coverage = int(wildcards.cov.split("/")[-1])
+    simulation = f"{wildcards.cov}x_{wildcards.proportion_genotype}"
     proportion = {
         "diploid_heterozygous":{"community":0.5,"mapping":0.5},
         "diploid_homozygous":{"community":1,"mapping":0},
@@ -78,12 +84,13 @@ def sub_simulations(wildcards):
         "tetraploid_triplex":{"community":0.75,"mapping":0.25},
         "tetraploid_quadruplex":{"community":1,"mapping":0},
     }[wildcards.proportion_genotype]
-    return [f"{path}/{proportion[reference]*coverage}x_{reference}_simulated_reads.fq" for reference in ("community","mapping")]
+    return [f"{simulation}/{int(proportion[reference]*coverage)}x_{reference}_simulated_reads.fq" for reference in ("community","mapping")]
 rule combine_simulation:
     input:
         sub_simulations
     output:
         "{cov}x_{proportion_genotype}/simulated_reads.fq"
+    group: "simulation"
     shell:
         """
         cat {input} > {output}
@@ -105,9 +112,13 @@ checkpoint run_telr:
         polish_iterations = config["telr parameters"]["polishing iterations"],
         assembler = config["telr parameters"]["assembler"],
         polisher = config["telr parameters"]["polisher"],
-        command = telr_command
-    threads: lambda wildcards: int(config["resources"]["threads"])
-    #conda: config["telr_conda"]
+        command = telr_command,
+        slurm_log = "{simulation}_stelr_slurm.log",
+        slurm_err = "{simulation}_stelr_slurm.err"
+    threads: config["resources"]["threads"]
+    resources: 
+        mem_mb = 60000
+    conda: config["telr_conda"]
     shell:
         """
         {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
@@ -121,7 +132,8 @@ rule liftover_annotation:
         mapping_annotation = "mapping_annotation.bed"
     output:
         "liftover_nonref.bed"
-    threads: lambda wildcards: int(config["resources"]["threads"])
+    threads: config["resources"]["threads"]
+    localrule: True
     shell:
         """
         python3 {config[liftover]} --fasta1 {input.community_reference} --fasta2 {input.mapping_reference} -1 {input.community_annotation} -2 {input.mapping_reference} -o . -t {threads} -g 50 -p 50 -x "asm10" -k
@@ -134,6 +146,7 @@ rule liftover_eval:
         #annotation = "liftover_nonref.bed"
     output:
         "{simulation}/liftover_eval/annotation.filter.bed"
+    localrule: True
     shell:
         """
         mkdir {simulation}/liftover_eval
@@ -146,6 +159,7 @@ rule af_eval:
         #annotation = "liftover_nonref.bed"
     output:
         "{simulation}/af_eval/telr_eval_af.json"
+    localrule: True
     shell:
         """
         mkdir {simulation}/af_eval
@@ -158,6 +172,7 @@ rule seq_eval:
         #annotation = "liftover_nonref.bed"
     output:
         "{simulation}/seq_eval/seq_eval.json"
+    localrule: True
     shell:
         """
         mkdir {simulation}/seq_eval

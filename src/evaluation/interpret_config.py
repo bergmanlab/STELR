@@ -4,7 +4,7 @@ import os
 import traceback
 telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
 sys.path.insert(0,telr_dir)
-from STELR_utility import memory_format, check_exist
+from STELR_utility import memory_format, check_exist, getdict, setdict
 
 def config_from_file(file_path):
     f = open(file_path, "r")
@@ -101,11 +101,16 @@ def config_from_file(file_path):
                         elif line.check == None:
                             subtitle = line.item
                         elif line.check:
-                            if line.item == "telr version 1.x":
-                                category[title]["telr version 1.x"] = True
+                            if line.item in ["telr version 1.x", "use slurm"]:
+                                category[title][line.item] = True
                             else: category[title][subtitle] = line.item
                     except: pass
-    category["resources"]["estimated memory"] = memory_format(category["resources"]["estimated memory"])
+    format_dict = {
+        ("resources","estimated memory"):memory_format,
+        ("resources","threads"):int
+    }
+    for param in format_dict:
+        setdict(category,param,format_dict[param](getdict(category,param)))
     return category
 
 class checkline:
@@ -121,7 +126,7 @@ class checkline:
         if(self.item): self.item = self.item.lower()
         if ":" in self.item:
             self.item = self.item.split(":")[0].strip()
-            self.content = line.split(":")[1].split("#")[0].strip()
+            self.content = ":".join(line.split(":")[1:]).split("#")[0].strip()
         if "use file" in self.item:
             self.item = "file"
             if not os.path.exists(self.content):

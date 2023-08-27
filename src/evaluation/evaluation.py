@@ -44,7 +44,8 @@ def get_file_paths():
         "telr":f"{telr_dir}/stelr.py",
         #"liftover":#TODO add a liftover script?
         "telr_dir":telr_dir,
-        #"telr_conda":f"{env_dir}/stelr_sniffles1.yaml",
+        "eval_src_dir":eval_src_dir,
+        "telr_conda":f"{env_dir}/stelr.yaml",
         "liftover_eval":f"{eval_src_dir}/liftover_evaluation.py",
         "af_eval":f"{eval_src_dir}/telr_af_eval.py",
         "seq_eval":f"{eval_src_dir}/telr_seq_eval.py"
@@ -122,15 +123,17 @@ def setup_run(config):
     config["output"] = []
     for sim in config["simulation parameters"]:
         if not sim == "seed":
-            if "file" in config["simulation parameters"][sim]:
-                input_file = config["simulation parameters"][sim]["file"]
+            sim_dict = getdict(config,["simulation parameters",sim])
+            if "file" in sim_dict:
+                input_file = sim_dict["file"]
                 if sim == "model":
+                    sim_dict["file"] = link = abs_path(f"{tmp_dir}/{sim_dict['model name']}.model")
                     if check_exist(input_file):
-                        symlink(input_file,f"{tmp_dir}/{config['simulation paramters']['model']['file']}")
+                        symlink(input_file,link)
                 else:
                     sim_dir = abs_path(f"{tmp_dir}/{sim}")
                     mkdir(sim_dir, False)
-                    config["simulation parameters"][sim]["file"] = link = abs_path(f"{sim_dir}/simulated_reads.fq")
+                    sim_dict["file"] = link = abs_path(f"{sim_dir}/simulated_reads.fq")
                     if check_exist(input_file):
                         symlink(input_file,link)
                     config["output"] += [
@@ -138,9 +141,6 @@ def setup_run(config):
                         f"{sim_dir}/af_eval/telr_eval_af.json",
                         f"{sim_dir}/seq_eval/seq_eval.json"
                     ]
-    if "file" in config["simulation parameters"]["model"]:
-        symlink(config["simulation parameters"]["model"]["file"],config["simulation parameters"]["model"]["model name"] + ".model")
-    config["simulation parameters"]["model"]["file"] = config["simulation parameters"]["model"]["model name"] + ".model"
 
     config_path = f"{tmp_dir}/config.json" # path to config file
     with open(config_path, "w") as conf:
@@ -149,7 +149,34 @@ def setup_run(config):
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
     config["config_file"] = config_path
-    config["resources"]["threads"] = int(config["resources"]["threads"])
+
+    if "use slurm" in config["slurm options"]:
+        slurm_optionals={
+            "--mail-user=":["slurm options","(optional) mail user"],
+            "--mail-type=":["slurm options","(optional) mail type"]
+        }
+        slurm_optionals = " \\\n                ".join([f"{o}{getdict(config,slurm_optionals[o])}" for o in slurm_optionals if slurm_optionals[o][-1] in getdict(config,slurm_optionals[o][:-1])])
+        slurm_command = f"""
+        --jobs 200
+        --use-conda
+        --latency-wait 999
+        --keep-going
+        --restart-times 3
+        --cluster-status '{config["eval_src_dir"]}/slurm_status.sh'
+        --cluster-cancel 'scancel'
+        --cluster""".strip().split() + [
+            f"""'sbatch \\
+                --partition={config["slurm options"]["partition"]} \\
+                --nodes=1 \\
+                --tasks-per-node={{threads}} \\
+                --mem={{resources.mem_mb}} \\
+                --time={config["slurm options"]["time limit"]} \\
+                --parsable \\
+                --output={{params.slurm_log}} \\
+                --error={{params.slurm_err}} \\
+                {slurm_optionals}'"""
+                ]
+        config["slurm options"]["use slurm"] = slurm_command
 
     return config
 
@@ -190,7 +217,7 @@ def run_workflow(snakefile, config):
         "snakemake",
         "-s", snakefile,
         "--configfile", config["config_file"],
-        #"--use-conda"
+        "--use-conda"
     ]
     optional_args = {("resources","threads"):"--cores",("resources","estimated memory"):"--resources"}
     try:
@@ -198,6 +225,8 @@ def run_workflow(snakefile, config):
             if getdict(config,arg):
                 command += [optional_args[arg], str(getdict(config,arg))]
     except: pass
+    if "use slurm" in config["slurm options"]:
+        command += config["slurm options"]["use slurm"]
     try:
         if not "resume" in config:
             subprocess.run(command, cwd=config["tmp_dir"])
