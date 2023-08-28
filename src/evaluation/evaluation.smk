@@ -47,7 +47,9 @@ rule download_model:
         wget -L https://raw.githubusercontent.com/yukiteruono/pbsim2/master/data/{output} -O "{output}"
         """
 
-
+def simulation_time(ideal_time):
+    time = str(min(int(config["slurm options"]["time limit"].replace(":","")), ideal_time))
+    return time[:-4] + ":" + time[-4:-2] + ":" + time[-2:]
 rule simulate_reads:
     input:
         reference = "{ref_type}_reference.fasta",
@@ -58,19 +60,19 @@ rule simulate_reads:
     params:
         prefix = "{cov}x_{ref_type}_simulated_reads",
         sub_sim_dir = "{simulation}/subsim_{ref_type}",
-        slurm_log = "{simulation}_simulation_slurm.log",
-        slurm_err = "{simulation}_simulation_slurm.err"
+        time = lambda wildcards: simulation_time(50000)
     resources: 
         mem_mb = 100000
     group: "simulation"
     shell:
         """
+        rm -r {params.sub_sim_dir}
         mkdir {params.sub_sim_dir}
         cd {params.sub_sim_dir}
         pbsim --depth {wildcards.cov} --prefix {params.prefix} --id-prefix '{wildcards.ref_type}' --hmm_model {input.model} ../../{input.reference} 2> {output.log}
         cd ../..
-        cat {params.sub_sim_dir}/{params.prefix}/*.fastq > {output.out}
-        rm -r {params.sub_sim_dir}
+        cat {params.sub_sim_dir}/{params.prefix}*.fastq > {output.out}
+ 	    rm -r {params.sub_sim_dir}
         """
 
 def sub_simulations(wildcards):
@@ -78,19 +80,21 @@ def sub_simulations(wildcards):
     simulation = f"{wildcards.cov}x_{wildcards.proportion_genotype}"
     proportion = {
         "diploid_heterozygous":{"community":0.5,"mapping":0.5},
-        "diploid_homozygous":{"community":1,"mapping":0},
+        "diploid_homozygous":{"community":1, "mapping":0},
         "tetraploid_simplex":{"community":0.25,"mapping":0.75},
         "tetraploid_duplex":{"community":0.5,"mapping":0.5},
         "tetraploid_triplex":{"community":0.75,"mapping":0.25},
-        "tetraploid_quadruplex":{"community":1,"mapping":0},
+        "tetraploid_quadruplex":{"community":1, "mapping":0},
     }[wildcards.proportion_genotype]
-    return [f"{simulation}/{int(proportion[reference]*coverage)}x_{reference}_simulated_reads.fq" for reference in ("community","mapping")]
+    return [f"{simulation}/{proportion[reference]*coverage}x_{reference}_simulated_reads.fq" for reference in ("community","mapping") if not proportion[reference] == 0]
 rule combine_simulation:
     input:
         sub_simulations
     output:
         "{cov}x_{proportion_genotype}/simulated_reads.fq"
     group: "simulation"
+    resources: 
+        mem_mb = 5000
     shell:
         """
         cat {input} > {output}
@@ -114,14 +118,15 @@ checkpoint run_telr:
         polisher = config["telr parameters"]["polisher"],
         command = telr_command,
         slurm_log = "{simulation}_stelr_slurm.log",
-        slurm_err = "{simulation}_stelr_slurm.err"
+        slurm_err = "{simulation}_stelr_slurm.err",
+        time = "5:00:00"#lambda wildcards: simulation_time(50000)
     threads: config["resources"]["threads"]
     resources: 
         mem_mb = 60000
     conda: config["telr_conda"]
     shell:
         """
-        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher}
+        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} -o {wildcards.simulation}
         """
 
 rule liftover_annotation:
@@ -149,7 +154,9 @@ rule liftover_eval:
     localrule: True
     shell:
         """
-        mkdir {simulation}/liftover_eval
+        if [ ! -d {wildcards.simulation}/liftover_eval ]; then
+            mkdir {wildcards.simulation}/liftover_eval
+        fi
         touch {output}
         """
 
@@ -162,7 +169,9 @@ rule af_eval:
     localrule: True
     shell:
         """
-        mkdir {simulation}/af_eval
+        if [ ! -d {wildcards.simulation}/af_eval ]; then
+            mkdir {wildcards.simulation}/af_eval
+        fi
         touch {output}
         """
 
@@ -175,6 +184,8 @@ rule seq_eval:
     localrule: True
     shell:
         """
-        mkdir {simulation}/seq_eval
+        if [ ! -d {wildcards.simulation}/seq_eval ]; then
+            mkdir {wildcards.simulation}/seq_eval
+        fi
         touch {output}
         """

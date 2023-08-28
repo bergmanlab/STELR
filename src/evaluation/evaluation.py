@@ -7,7 +7,7 @@ import glob
 import traceback
 telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
 sys.path.insert(0,telr_dir)
-from STELR_utility import getdict, setdict, memory_format, abs_path, mkdir, symlink, check_exist
+from STELR_utility import getdict, setdict, memory_format, abs_path, mkdir, symlink, check_exist, string_to_bool
 from interpret_config import config_from_file
 
 def main():
@@ -61,7 +61,8 @@ def override_args():
         "--mem":[("resources","estimated memory"),memory_format],
         "--memory":[("resources","estimated memory"),memory_format],
         "-o":[("out",),abs_path],
-        "--resume":[("resume",),int]
+        "--resume":[("resume",),int],
+        "--use-slurm":[("slurm options","use slurm"), string_to_bool]
     }
     unparsed = []
     for index in range(1,len(sys.argv)):
@@ -87,7 +88,10 @@ def update_config(config, params=False):
 def parse_args():
     params, unparsed = override_args()
 
-    config = config_from_file(unparsed[0])
+    if ("resume",) in params:
+        with open(f"stelr_eval_run_{params[('resume',)]}/config.json","r") as input:
+            config = json.load(input)
+    else: config = config_from_file(unparsed[0])
     #print(params)
     config = update_config(config, params)
     
@@ -141,14 +145,9 @@ def setup_run(config):
                         f"{sim_dir}/af_eval/telr_eval_af.json",
                         f"{sim_dir}/seq_eval/seq_eval.json"
                     ]
-
-    config_path = f"{tmp_dir}/config.json" # path to config file
-    with open(config_path, "w") as conf:
-        json.dump(config, conf) #write config file as json    
     
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
-    config["config_file"] = config_path
 
     if "use slurm" in config["slurm options"]:
         slurm_optionals={
@@ -161,22 +160,30 @@ def setup_run(config):
         --use-conda
         --latency-wait 999
         --keep-going
-        --restart-times 3
-        --cluster-status '{config["eval_src_dir"]}/slurm_status.sh'
+        --cluster-status 'bash {config["eval_src_dir"]}/slurm_status.sh'
         --cluster-cancel 'scancel'
-        --cluster""".strip().split() + [
-            f"""'sbatch \\
+        --cluster""".strip().split("'")
+        for index in range(len(slurm_command)):
+            if(index/2 == int(index/2)):
+                slurm_command[index] = slurm_command[index].split()
+            else:
+                slurm_command[index] = [slurm_command[index]]
+        slurm_command = [item for sublist in slurm_command for item in sublist] + [
+            f"""sbatch \\
                 --partition={config["slurm options"]["partition"]} \\
                 --nodes=1 \\
                 --tasks-per-node={{threads}} \\
                 --mem={{resources.mem_mb}} \\
-                --time={config["slurm options"]["time limit"]} \\
+                --time={{params.time}} \\
                 --parsable \\
-                --output={{params.slurm_log}} \\
-                --error={{params.slurm_err}} \\
-                {slurm_optionals}'"""
+                {slurm_optionals}"""
                 ]
         config["slurm options"]["use slurm"] = slurm_command
+
+    config_path = f"{tmp_dir}/config.json" # path to config file
+    config["config_file"] = config_path
+    with open(config_path, "w") as conf:
+        json.dump(config, conf) #write config file as json    
 
     return config
 
@@ -226,13 +233,15 @@ def run_workflow(snakefile, config):
                 command += [optional_args[arg], str(getdict(config,arg))]
     except: pass
     if "use slurm" in config["slurm options"]:
-        command += config["slurm options"]["use slurm"]
+        if config["slurm options"]["use slurm"]:
+            command += config["slurm options"]["use slurm"]
     try:
         if not "resume" in config:
             subprocess.run(command, cwd=config["tmp_dir"])
         else:
             subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
-            subprocess.run(command + ["--rerun-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
+            #subprocess.run(command + ["--rerun-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--ignore-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
         #for output_file in config["output"]:
         #    os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file}")
         if not getdict(config,("TELR parameters","Additional options","Keep intermediate files")):
