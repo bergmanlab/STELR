@@ -174,7 +174,7 @@ def setup_run(config):
                 --nodes=1 \\
                 --tasks-per-node={{threads}} \\
                 --mem={{resources.mem_mb}} \\
-                --time={{params.time}} \\
+                --time={{resources.runtime}} \\
                 --parsable \\
                 {slurm_optionals}"""
                 ]
@@ -240,8 +240,8 @@ def run_workflow(snakefile, config):
             subprocess.run(command, cwd=config["tmp_dir"])
         else:
             subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
-            #subprocess.run(command + ["--rerun-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
-            subprocess.run(command + ["--ignore-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
+            subprocess.run(command + ["--rerun-incomplete", "--rerun-triggers","mtime","--retries", "0"], cwd=config["tmp_dir"])
+            #subprocess.run(command + ["--ignore-incomplete", "--rerun-triggers","mtime"], cwd=config["tmp_dir"])
         #for output_file in config["output"]:
         #    os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file}")
         if not getdict(config,("TELR parameters","Additional options","Keep intermediate files")):

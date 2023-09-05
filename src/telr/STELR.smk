@@ -186,7 +186,10 @@ rule sv_repeatmask:
         repeatmasker_dir = "vcf_ins_repeatmask",
     threads: 20
     shell:
-        "python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'"
+        """
+        ml RepeatMasker/4.1.2-p1-foss-2020b
+        python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'
+        """
 
 rule sv_RM_sort:
     input:
