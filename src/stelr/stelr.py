@@ -8,7 +8,6 @@ import argparse
 import subprocess
 import logging
 import json
-from STELR_utility import all_before
 from shutil import rmtree
 from time import perf_counter
 
@@ -153,15 +152,46 @@ def mkdir(if_verbose, dir):
     else:
         if_verbose.print(f"Successfully created the directory {dir}")
 
-def install():
-    stelr_dir = prefix(os.path.abspath(__file__),"/stelr")
-
+def install(args):
+    threads = args["thread"]
+    from STELR_utility import prefix, mkdir, abs_path
+    from shutil import copyfile
+    import glob
+    stelr_dir = prefix(abs_path(__file__),"/src")
+    envs_dir = f"{stelr_dir}/envs"
+    snake_dir = f"{envs_dir}/snakemake"
+    mkdir(snake_dir)
+    stelr_env_github = glob.glob(f"{envs_dir}/stable_environment_v*")[0]
+    stelr_env_installed = snake_dir + stelr_env_github.split(envs_dir)[1]
+    conda_version=stelr_env_github.split("stable_environment_v")[-1].split(".yaml")[0]
+    copyfile(stelr_env_github,stelr_env_installed)
+    smk_config = f"{snake_dir}/installation_config"
+    args.update({
+        "output":".installation_complete",
+        "conda":stelr_env_installed
+        })
+    for unnecessary_arg in ["fasta_reads","input","reference","library"]:
+        args.update({unnecessary_arg:"not needed for install"})
+    with open(smk_config,"w") as output:
+        json.dump(args,output)
+    command=[
+        "snakemake","-s",f"{stelr_dir}/src/stelr/STELR.smk",#"--quiet",
+        "--configfile",smk_config,
+        "--cores",str(threads),
+        "--use-conda",#stelr_env_installed,
+        "--conda-create-envs-only","--use-singularity"
+        ]
+    subprocess.run(command, cwd=snake_dir)
+    os.remove(smk_config)
+    installed_version = {
+        "version":conda_version,
+        "installed_env":stelr_env_installed.split("envs/")[-1]
+    }
+    with open(f"{snake_dir}/installed_version","w") as output:
+        json.dump(installed_version,output)
+    print(f"STELR installation complete:\n\tSTELR version: {__version__}\n\tRunning environment version: {conda_version}")
 
 def get_args():
-
-    if "--install" in sys.argv:
-        install()
-        quit()
 
     if "--resume" in sys.argv:
         config = {"out":"."}
@@ -182,27 +212,29 @@ def get_args():
     required = parser.add_argument_group("required arguments")
 
     # required
-    required.add_argument(
-        "-i",
-        "--reads",
-        type=str,
-        help="reads in fasta/fastq format or read alignments in bam format",
-        required=True,
-    )
-    required.add_argument(
-        "-r",
-        "--reference",
-        type=str,
-        help="reference genome in fasta format",
-        required=True,
-    )
-    required.add_argument(
-        "-l",
-        "--library",
-        type=str,
-        help="TE consensus sequences in fasta format",
-        required=True,
-    )
+    if not "--install" in sys.argv:
+        required.add_argument(
+            "-i",
+            "--reads",
+            type=str,
+            help="reads in fasta/fastq format or read alignments in bam format",
+            required=True,
+        )
+        required.add_argument(
+            "-r",
+            "--reference",
+            type=str,
+            help="reference genome in fasta format",
+            required=True,
+        )
+        required.add_argument(
+            "-l",
+            "--library",
+            type=str,
+            help="TE consensus sequences in fasta format",
+            required=True,
+        )
+        
 
     # optional
     optional.add_argument(
@@ -320,6 +352,12 @@ def get_args():
         help="Resume a previous run by ID (default: begin new run)",
         required=False,
     )
+    optional.add_argument(
+        "--install",
+        action="store_true",
+        help="Use this option to install the stable conda environments required to run STELR.",
+        required=False,
+    )
     parser._action_groups.append(optional)
     args = parser.parse_args()
 
@@ -403,8 +441,12 @@ def get_args():
 
     if args.overlap is None:
         args.overlap = 20
+    
 
-    return vars(args)
+    if "--install" in sys.argv:
+        install(vars(args))
+        quit()
+    else: return vars(args)
 
 class verbose:
     def __init__(self, verbose=False):

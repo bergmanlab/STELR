@@ -397,3 +397,11 @@ rule build_index:
         samtools faidx '{input}' || true
         touch {output}
         """
+
+rule installation:
+    output:
+        ".installation_complete"
+    conda:
+        config["conda"]
+    shell:
+        "touch {output}"
