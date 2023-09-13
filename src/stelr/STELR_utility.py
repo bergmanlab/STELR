@@ -91,14 +91,14 @@ def get_rev_comp_sequence(fasta_in, fasta_out):
 def export_env(file):
     """export conda environment"""
     file_tmp = file + ".tmp"
-    cmd_list = ["conda", "env", "export", "--name", "TELR", "--file", file_tmp]
+    cmd_list = ["conda", "env", "export", "--name", "STELR", "--file", file_tmp]
     subprocess.call(cmd_list)
     with open(file, "w") as output, open(file_tmp, "r") as input:
         for line in input:
             if (
                 not line.startswith("prefix:")
                 and "- pip:" not in line
-                and "- telr==" not in line
+                and "- stelr==" not in line
             ):
                 output.write(line)
     os.remove(file_tmp)
@@ -220,6 +220,8 @@ def progress_bar(*args):
     contigs_todo = len(glob.glob("contigs/*/config.json"))
     return f"{contigs_done} out of {contigs_todo}"
 
+def prefix(string_to_parse, thing_before, last_index=-1):
+    return thing_before.join(string_to_parse.split(thing_before)[:-1])
             
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])

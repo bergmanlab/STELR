@@ -43,7 +43,7 @@ def write_vcf(input, ref, ref_index, out_vcf):
     with open(out_vcf, "w") as vcf:
         vcf.write("##fileformat=VCFv4.1\n")
         vcf.write("##fileDate={}".format(date.today()) + "\n")
-        vcf.write("##source=TELR\n")
+        vcf.write("##source=STELR\n")
         vcf.write(f"##reference={ref}\n")
         vcf.write("\n".join(ref_info) + "\n")
         vcf.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the structure variant">\n')

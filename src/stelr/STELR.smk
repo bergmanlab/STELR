@@ -367,12 +367,12 @@ rule final_output:
         reference_index = lambda wildcards: f"{config['reference']}.fai",
         finished_all_contigs = all_contigs_output
     output:
-        contig_fa_outfile = "reads.telr.contig.fasta",
-        te_fa_outfile = "reads.telr.te.fasta",
-        bed_outfile = "reads.telr.bed",
-        json_outfile = "reads.telr.json",
-        expanded_json_outfile = "reads.telr.expanded.json",
-        vcf_outfile = "reads.telr.vcf"
+        contig_fa_outfile = "reads.stelr.contig.fasta",
+        te_fa_outfile = "reads.stelr.te.fasta",
+        bed_outfile = "reads.stelr.bed",
+        json_outfile = "reads.stelr.json",
+        expanded_json_outfile = "reads.stelr.expanded.json",
+        vcf_outfile = "reads.stelr.vcf"
     params:
         output_pattern = "18_output.json"
     shell:

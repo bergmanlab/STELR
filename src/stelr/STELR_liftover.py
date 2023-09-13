@@ -4,7 +4,7 @@ import json
 import subprocess
 import shutil
 from multiprocessing import Pool
-from STELR_utility import string_to_bool, get_subseq, check_exist
+from STELR_utility import string_to_bool, get_subseq, check_exist, prefix
 
 def flank_bed(ref, ref_size, te_json, flank_len, output_file):
     """
@@ -38,7 +38,7 @@ def paf_to_bed(paf, bed, contig_name, different_contig_name):
     if "3p" in os.path.basename(paf): different_contig_name = True
     else: different_contig_name = string_to_bool(different_contig_name)
     if different_contig_name:
-        filter = "_".join(contig_name.split("_")[:-2])
+        filter = prefix(contig_name, "_", -2)
     else:
         filter = None
     with open(paf, "r") as input, open(bed, "w") as output:
@@ -174,7 +174,7 @@ def make_json(bed_input, json_output):
             #"preset": preset,
             # "single_flank": single_flank,
             #"different_contig_name": different_contig_name,
-            #"telr_mode": telr_mode,
+            #"stelr_mode": stelr_mode,
         }
         json.dump(annotation, output)
 

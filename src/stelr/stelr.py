@@ -8,6 +8,7 @@ import argparse
 import subprocess
 import logging
 import json
+from STELR_utility import all_before
 from shutil import rmtree
 from time import perf_counter
 
@@ -15,7 +16,7 @@ def main():
     config = get_args()
     if config["resume"]:
         resume_params = config
-        with open(f"{config['out']}/telr_run_{config['resume']}/config.json","r") as config_from_file:
+        with open(f"{config['out']}/stelr_run_{config['resume']}/config.json","r") as config_from_file:
             config = json.load(config_from_file)
         resume_params.pop("out")
         config.update(resume_params)
@@ -29,16 +30,16 @@ def main():
     run_workflow(config)
 
 def handle_file_paths(config):
-    telr_src = os.path.abspath(__file__)
-    telr_dir = os.path.split(telr_src)[0]
+    stelr_src = os.path.abspath(__file__)
+    stelr_dir = os.path.split(stelr_src)[0]
     
     source_files = ["alignment","assembly","sv","te","liftover","utility","output"]
     for file in source_files:
-        config[f"STELR_{file}"] = f"{telr_dir}/STELR_{file}.py"
-    config["smk"] = f"{telr_dir}/STELR.smk"
-    config["STELR_contig"] = f"{telr_dir}/STELR_contig.smk"
-    config["fix_ngmlr"] = f"{telr_dir}/fix_ngmlr.py"
-    env_dir = telr_dir.split("src")[0] + "envs"
+        config[f"STELR_{file}"] = f"{stelr_dir}/STELR_{file}.py"
+    config["smk"] = f"{stelr_dir}/STELR.smk"
+    config["STELR_contig"] = f"{stelr_dir}/STELR_contig.smk"
+    config["fix_ngmlr"] = f"{stelr_dir}/fix_ngmlr.py"
+    env_dir = stelr_dir.split("src")[0] + "envs"
     config["envs"] = {}
 
 
@@ -46,7 +47,7 @@ def handle_file_paths(config):
 
 def setup_run(if_verbose, config):
     run_id = random.randint(1000000,9999999) #generate a random run ID
-    tmp_dir = f"{config['out']}/telr_run_{run_id}"
+    tmp_dir = f"{config['out']}/stelr_run_{run_id}"
     mkdir(if_verbose, tmp_dir)
     mkdir(if_verbose, os.path.join(tmp_dir, "input"))
 
@@ -59,12 +60,12 @@ def setup_run(if_verbose, config):
     )
 
     config["output"] = [
-        f"reads.telr.contig.fasta",
-        f"reads.telr.te.fasta",
-        f"reads.telr.bed",
-        f"reads.telr.json",
-        f"reads.telr.expanded.json",
-        f"reads.telr.vcf"
+        f"reads.stelr.contig.fasta",
+        f"reads.stelr.te.fasta",
+        f"reads.stelr.bed",
+        f"reads.stelr.json",
+        f"reads.stelr.expanded.json",
+        f"reads.stelr.vcf"
     ]
 
     config["run_id"] = run_id
@@ -76,7 +77,7 @@ def setup_run(if_verbose, config):
     return config
 
 def run_workflow(config):
-    print(f"TELR version {__version__}")
+    print(f"STELR version {__version__}")
     print(f"Run ID {config['run_id']}")
     command = [
         "snakemake", #"--use-conda",#"--conda-prefix",config["conda_yaml"],
@@ -98,10 +99,10 @@ def run_workflow(config):
             rmtree(config['tmp_dir'])
     except Exception as e:
         print(e)
-        print("TELR failed!")
+        print("STELR failed!")
         sys.exit(1)
-    if config["resume"] is None: print(f"TELR finished in {perf_counter()-start} seconds!")
-    print(f"TELR run {config['run_id']} finished.")
+    if config["resume"] is None: print(f"STELR finished in {perf_counter()-start} seconds!")
+    print(f"STELR run {config['run_id']} finished.")
 
 def process_input_files(input_file_paths, input_dir, sample_name):
     def file_extension_of(file):
@@ -152,7 +153,16 @@ def mkdir(if_verbose, dir):
     else:
         if_verbose.print(f"Successfully created the directory {dir}")
 
+def install():
+    stelr_dir = prefix(os.path.abspath(__file__),"/stelr")
+
+
 def get_args():
+
+    if "--install" in sys.argv:
+        install()
+        quit()
+
     if "--resume" in sys.argv:
         config = {"out":"."}
         resume_params = {
@@ -288,7 +298,7 @@ def get_args():
     optional.add_argument(
         "--different_contig_name",
         action="store_true",
-        help="If provided then TELR does not require the contig name to match before and after annotation liftover (default: require contig name to be the same before and after liftover)",
+        help="If provided then STELR does not require the contig name to match before and after annotation liftover (default: require contig name to be the same before and after liftover)",
         required=False,
     )
     optional.add_argument(
