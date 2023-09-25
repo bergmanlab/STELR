@@ -39,7 +39,17 @@ def handle_file_paths(config):
     config["STELR_contig"] = f"{stelr_dir}/STELR_contig.smk"
     config["fix_ngmlr"] = f"{stelr_dir}/fix_ngmlr.py"
     env_dir = stelr_dir.split("src")[0] + "envs"
-    config["envs"] = {}
+    config["envs"] = f"{env_dir}/snakemake"
+    with open(f"{env_dir}/snakemake/installed_version","r") as input:
+        env_info = json.load(input)
+        config["conda_version"] = env_info["version"]
+        conda = f"{env_dir}/{env_info['installed_env']}"
+        config["conda"] = conda
+        f = open(conda,"r")
+        env_info = f.read()
+        f.close()
+        sniffles_version = env_info.split("sniffles=")[1][0]
+        config["sv_detector"] = f"Sniffles{sniffles_version}"
 
 
     return config
@@ -77,9 +87,11 @@ def setup_run(if_verbose, config):
 
 def run_workflow(config):
     print(f"STELR version {__version__}")
+    print(f"STELR environment version {config['conda_version']}")
     print(f"Run ID {config['run_id']}")
     command = [
-        "snakemake", #"--use-conda",#"--conda-prefix",config["conda_yaml"],
+        "snakemake", 
+        "--use-conda","--conda-prefix",config["envs"],
         "-s",config["smk"],
         "--configfile", config["config_path"],
         "--cores", str(config["thread"]),# "--quiet"
@@ -161,7 +173,7 @@ def install(args):
     envs_dir = f"{stelr_dir}/envs"
     snake_dir = f"{envs_dir}/snakemake"
     mkdir(snake_dir)
-    stelr_env_github = glob.glob(f"{envs_dir}/stable_environment_v*")[0]
+    stelr_env_github = glob.glob(f"{envs_dir}/stable_environment_v*")[-1]
     stelr_env_installed = snake_dir + stelr_env_github.split(envs_dir)[1]
     conda_version=stelr_env_github.split("stable_environment_v")[-1].split(".yaml")[0]
     copyfile(stelr_env_github,stelr_env_installed)

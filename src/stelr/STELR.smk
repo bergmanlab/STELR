@@ -136,7 +136,7 @@ rule parse_vcf:
         'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
 
 #temporary measure to handle Sniffles1 output formatting issue, which causes an error when calling bcftools on it
-rule bcftols_bypass:
+rule bcftools_bypass:
     input:
         parse_vcf_input
     output:
