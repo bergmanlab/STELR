@@ -18,6 +18,7 @@ dependencies:
   - backports.functools_lru_cache=1.6.5=pyhd8ed1ab_0
   - bcftools=1.17=h3cc50cf_1
   - bcrypt=4.0.1=py310hcb5633a_1
+  - bedtools=2.31.0=hf5e1c6e_3
   - biopython=1.81=py310h1fa729e_0
   - boto3=1.28.46=pyhd8ed1ab_0
   - botocore=1.31.46=pyhd8ed1ab_0
@@ -194,6 +195,7 @@ dependencies:
   - rpds-py=0.10.3=py310hcb5633a_0
   - rsa=4.9=pyhd8ed1ab_0
   - s3transfer=0.6.2=pyhd8ed1ab_0
+  - seqtk=1.4=he4a0461_1
   - setuptools=68.2.2=pyhd8ed1ab_0
   - setuptools-scm=7.1.0=pyhd8ed1ab_0
   - six=1.16.0=pyh6c4a22f_0
