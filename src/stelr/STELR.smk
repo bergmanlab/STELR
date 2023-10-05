@@ -400,8 +400,8 @@ rule build_index:
 
 rule installation:
     output:
-        ".installation_complete"
+        ".installed_{env}"
     conda:
-        config["conda"]
+        lambda wildcards: config["conda"][wildcards.env]
     shell:
         "touch {output}"

@@ -167,21 +167,21 @@ def mkdir(if_verbose, dir):
 def install(args):
     threads = args["thread"]
     from STELR_utility import prefix, mkdir, abs_path
-    from shutil import copyfile
-    import glob
     stelr_dir = prefix(abs_path(__file__),"/src")
     envs_dir = f"{stelr_dir}/envs"
     snake_dir = f"{envs_dir}/snakemake"
     mkdir(snake_dir)
-    stelr_env_github = glob.glob(f"{envs_dir}/stable_environment_v*")[-1]
-    stelr_env_installed = snake_dir + stelr_env_github.split(envs_dir)[1]
-    conda_version=stelr_env_github.split("stable_environment_v")[-1].split(".yaml")[0]
-    copyfile(stelr_env_github,stelr_env_installed)
+    args["conda"] = {}
+    args["output"] = []
+    with open(f"{envs_dir}/stelr_environments.json","r") as input:
+        stelr_envs = json.load(input)
+        for env in stelr_envs:
+            env_file = f"{snake_dir}/{env}.yaml"
+            args["conda"][env] = env_file
+            args["output"].append(f".installed_{env}")
+            with open(env_file,"w") as output:
+                output.write(stelr_envs[env])
     smk_config = f"{snake_dir}/installation_config"
-    args.update({
-        "output":".installation_complete",
-        "conda":stelr_env_installed
-        })
     for unnecessary_arg in ["fasta_reads","input","reference","library"]:
         args.update({unnecessary_arg:"not needed for install"})
     with open(smk_config,"w") as output:
@@ -195,13 +195,9 @@ def install(args):
         ]
     subprocess.run(command, cwd=snake_dir)
     os.remove(smk_config)
-    installed_version = {
-        "version":conda_version,
-        "installed_env":stelr_env_installed.split("envs/")[-1]
-    }
-    with open(f"{snake_dir}/installed_version","w") as output:
-        json.dump(installed_version,output)
-    print(f"STELR installation complete:\n\tSTELR version: {__version__}\n\tRunning environment version: {conda_version}")
+    #for file in args["output"]:
+    #    os.remove(f"{snake_dir}/{file}")
+    print(f"STELR {__version__} installation complete.")
 
 def get_args():
 
