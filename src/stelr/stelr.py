@@ -40,18 +40,10 @@ def handle_file_paths(config):
     config["fix_ngmlr"] = f"{stelr_dir}/fix_ngmlr.py"
     env_dir = stelr_dir.split("src")[0] + "envs"
     config["envs"] = f"{env_dir}/snakemake"
-    with open(f"{env_dir}/snakemake/installed_version","r") as input:
-        env_info = json.load(input)
-        config["conda_version"] = env_info["version"]
-        conda = f"{env_dir}/{env_info['installed_env']}"
-        config["conda"] = conda
-        f = open(conda,"r")
-        env_info = f.read()
-        f.close()
-        sniffles_version = env_info.split("sniffles=")[1][0]
-        config["sv_detector"] = f"Sniffles{sniffles_version}"
-
-
+    with open(f"{env_dir}/stelr_environments.json") as input:
+        env_files = json.load(input)
+        config["conda"] = {key:f"{config['envs']}/{key}.yaml" for key in env_files}
+        print(config["conda"])
     return config
 
 def setup_run(if_verbose, config):
@@ -87,7 +79,6 @@ def setup_run(if_verbose, config):
 
 def run_workflow(config):
     print(f"STELR version {__version__}")
-    print(f"STELR environment version {config['conda_version']}")
     print(f"Run ID {config['run_id']}")
     command = [
         "snakemake", 
@@ -190,7 +181,7 @@ def install(args):
         "snakemake","-s",f"{stelr_dir}/src/stelr/STELR.smk",#"--quiet",
         "--configfile",smk_config,
         "--cores",str(threads),
-        "--use-conda",#stelr_env_installed,
+        "--use-conda","--conda-prefix",snake_dir,
         "--conda-create-envs-only","--use-singularity"
         ]
     subprocess.run(command, cwd=snake_dir)
@@ -268,6 +259,12 @@ def get_args():
         "--presets",
         type=str,
         help="parameter presets for different sequencing technologies, please provide 'pacbio' or 'ont' (default = 'pacbio')",
+        required=False,
+    )
+    optional.add_argument(
+        "--sv_detector",
+        type=str,
+        help="Choose the method to be used for sv detection step, please provide 'sniffles1' or 'sniffles2' (default = 'sniffles1')",
         required=False,
     )
     optional.add_argument(
@@ -393,6 +390,14 @@ def get_args():
     elif args.presets not in ["pacbio", "ont"]:
         print("Please provide a valid preset option (pacbio/ont), exiting...")
         sys.exit(1)
+
+    if args.sv_detector is None:
+        args.sv_detector = "Sniffles1"
+    elif args.sv_detector.lower() not in ["sniffles1", "sniffles2"]:
+        print("Please provide a valid sv_detector option (Sniffles1/Sniffles2), exiting...")
+        sys.exit(1)
+    else:
+        args.sv_detector = {"sniffles1":"Sniffles1", "sniffles2":"Sniffles2"}[args.sv_detector.lower()]
 
     if args.polish_iterations is None:
         args.polish_iterations = 1
