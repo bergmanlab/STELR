@@ -22,6 +22,8 @@ rule bam_input: #if input is given in bam format, convert it to fasta format.
         input_reads_if_in_bam_format
     output:
         config["fasta_reads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_alignment]} bam2fasta '{input}' '{output}'"
 
@@ -46,6 +48,8 @@ rule sort_index_bam:
         "reads_sort.bam"
     threads: config["thread"]
         #samtools
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_alignment]} sort_index_bam '{input}' '{output}' '{threads}'"
     
@@ -59,6 +63,8 @@ rule align_with_ngmlr:#TODO: add timers to these alignments
         presets = config["presets"],
         label = lambda wildcards: {"ont":"ont","pacbio":"pb"}[config["presets"]]
     threads: config["thread"]
+    conda:
+        config["conda"]["ngmlr"]
     shell:
         """
         ngmlr -r {input.reference} -q {input.reads} -x {params.presets} -t {threads} --rg-id reads --rg-sm reads --rg-lb {params.label} --no-progress | python3 {config[fix_ngmlr]} > {output}
@@ -73,6 +79,8 @@ rule align_with_minimap2:
     params:
         presets = lambda wildcards: {"ont":"map-ont","pacbio":"map-pb"}[config["presets"]]
     threads: config["thread"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         minimap2 --cs --MD -Y -L -ax {params.presets} {input.reference} {input.reads} > {output}
@@ -82,19 +90,6 @@ rule align_with_minimap2:
 '''1st stage
 SV calling (Sniffles)
 '''
-'''
-rule detect_sv:
-    input:
-        bam = "reads_sort.bam",
-        reference = config["reference"]
-    output:
-        "sv-reads_{sv_detector}.vcf"
-    params:
-        sample_name = "reads",
-    threads: config["thread"]
-    shell:
-        "python3 {config[STELR_sv]} detect_sv '{input.bam}' '{input.reference}' '{output}' '{params.sample_name}' '{threads}'"
-'''
 
 rule sv_detection_sniffles1:
     input:
@@ -102,6 +97,8 @@ rule sv_detection_sniffles1:
     output:
         "sv-reads_Sniffles1.vcf"
     threads: config["thread"]
+    conda:
+        config["conda"]["sniffles1"]
     shell:
         "sniffles -n -1 --threads {threads} -m {input} -v {output}"
 
@@ -111,6 +108,8 @@ rule sv_detection_sniffles2:
     output:
         "sv-reads_Sniffles2.vcf"
     threads: config["thread"]
+    conda:
+        config["conda"]["sniffles2"]
     shell:
         """
         sniffles --output-rnames -t 10 -i {input} -v {output}
@@ -132,6 +131,8 @@ rule parse_vcf:
             "Sniffles1":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%RE\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n',
             "Sniffles2":'%CHROM\\t%POS\\t%END\\t%SVLEN\\t%AF\\t%ID\\t%ALT\\t%RNAMES\\t%FILTER\\t[ %GT]\\t[ %DR]\\t[ %DV]\n'
         }[sv_detector(wildcards)]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         'bcftools query -i \'SVTYPE="INS" & ALT!="<INS>"\' -f "{params}" "{input}" > "{output}"'
 
@@ -153,6 +154,8 @@ rule swap_vcf_coordinate:
         "reads.vcf_parsed.tsv.swap"
     params:
         lambda wildcards: sv_detector(wildcards)
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} swap_coordinate '{input}' '{output}' {params}"
 
@@ -161,6 +164,8 @@ rule rm_vcf_redundancy:
         "reads.vcf_parsed.tsv.swap"
     output:
         "reads.vcf_parsed.tsv"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} rm_vcf_redundancy '{input}' '{output}'"
 
@@ -169,6 +174,8 @@ rule write_ins_seqs:
         "reads.vcf_parsed.tsv"
     output:
         "reads.vcf_ins.fasta"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} write_ins_seqs '{input}' '{output}'"
 
@@ -185,6 +192,8 @@ rule sv_repeatmask:
     params:
         repeatmasker_dir = "vcf_ins_repeatmask",
     threads: 20
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'"
 
@@ -194,6 +203,8 @@ rule sv_RM_sort:
     output:
         "vcf_ins_repeatmask/{ins_seqs}.out.sort.gff"
         #bedtools
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "bedtools sort -i '{input}' > '{output}'"
 
@@ -203,6 +214,8 @@ rule sv_RM_merge:
     output:
         "vcf_ins_repeatmask/{ins_seqs}.out.merge.bed"
         #bedtools
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "bedtools merge -i '{input}' > '{output}'"
 
@@ -214,6 +227,8 @@ rule sv_TE_extract:
     output:
         ins_filtered = "reads.vcf.filtered.tmp.tsv",
         loci_eval = "reads.loci_eval.tsv"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} te_extract '{input.parsed_vcf}' '{input.ins_seqs}' '{input.ins_rm_merge}' '{output.ins_filtered}' '{output.loci_eval}'"
 
@@ -225,6 +240,8 @@ rule seq_merge:
     params:
         window = 20
         #bedtools
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         'bedtools merge -o collapse -c 2,3,4,5,6,7,8,9,10,11,12,13,14 -delim ";" -d "{params.window}" -i "{input}" > "{output}"'
 
@@ -233,6 +250,8 @@ rule merge_parsed_vcf:##### can we thread back to here? (probably not easily)
         "reads.vcf.merged.tmp.tsv"
     output:
         "reads.vcf_filtered.tsv"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_sv]} merge_vcf '{input}' '{output}'"
 
@@ -255,6 +274,8 @@ checkpoint initialize_contig_dirs:
     output:
         "contigs/.contig_dirs_made"
     threads: config["thread"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_assembly]} make_contig_dirs {input} {threads}
@@ -281,6 +302,7 @@ rule contig_smk:
         print(f"Now processing contig {progress}.")
         command = [
             "snakemake","-s",config["STELR_contig"],
+            "--use-conda","--conda-prefix",config["envs"],
             "--configfile",abs_path(input.json),
             "--cores",str(threads)
         ]
@@ -308,6 +330,8 @@ rule ref_repeatmask:
     params:
         ref_rm_dir = "ref_repeatmask"
     threads: 20
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ ! -d '{params.ref_rm_dir}' ]; then mkdir '{params.ref_rm_dir}'
@@ -331,6 +355,8 @@ rule ref_te_bed:
         "ref_repeatmask/{reference}.out.gff3"
     output:
         "ref_repeatmask/{reference}.te.bed.unsorted"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} gff3tobed '{input}' '{output}'
@@ -342,6 +368,8 @@ rule sort_ref_rm:
         "ref_repeatmask/{reference}.te.bed.unsorted"
     output:
         "ref_repeatmask/{reference}.te.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -375,6 +403,8 @@ rule final_output:
         vcf_outfile = "reads.stelr.vcf"
     params:
         output_pattern = "18_output.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_output]} write_output {output} {input.reference} {input.reference_index} {params}"
 
@@ -384,6 +414,8 @@ rule minimap2bed:
         "{minimap_output}.paf"
     output:
         "{minimap_output}.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_utility]} minimap2bed '{input}' '{output}'"
 
@@ -392,6 +424,8 @@ rule build_index:
         "{genome}"
     output:
         "{genome}.fai"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         samtools faidx '{input}' || true
