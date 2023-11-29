@@ -63,7 +63,7 @@ def config_from_file(config_file):
                 ["[","]","genotype",("options for simulated reads","Simulation type params","genotype")],
                 ["By ratio:","\n",str,("options for simulated reads","Simulation type params","proportion")]
                 ],0],
-            ["Seed:",[["Seed:","\n",int,("options for simulated reads","seed")]]],
+            ["Seed:",[["Seed:","\n",str,("options for simulated reads","seed")]]],
             ["Coverage:",[["Coverage:","\n",int,("options for simulated reads","coverage")]]],
             ["READS FROM FILE",[["[","]","selection",("read source",)]],4],
             ["Mapping Reference:",[
@@ -155,10 +155,17 @@ def config_from_file(config_file):
         if info:
             print(f"Error reading config: read config stalled after line {last_unstalled_line}")
             sys.exit(1)
-    if "read source" == "reads from file":
-        config["Evaluation requirements"]["Community reference genome"] = config["options for simulated reads"]["Reference Genomes"]["Community Reference"]["file path"]
-    else:
+    if config["read source"] == "reads from file":
         config["Evaluation requirements"]["Community reference genome"] = config["options for reads from file"]["Community Reference"]["file path"]
+    else:
+        config["Evaluation requirements"]["Community reference genome"] = config["options for simulated reads"]["Reference Genomes"]["Community Reference"]["file path"]
+    if config["options for simulated reads"]["seed"] == "random": config["options for simulated reads"]["seed"] = random.randint(0,1000)
+    else: 
+        try:
+            config["options for simulated reads"]["seed"] = int(config["options for simulated reads"]["seed"])
+        except:
+            raise Exception("Seed must be an integer.")
+            sys.exit(1)
     return config
 
 def format_input(config, line, info_line, data):

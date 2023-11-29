@@ -263,7 +263,7 @@ def make_contig_dirs(vcf_parsed, config, threads):
         config = json.load(input)
         needed_info = [
             #STELR source code
-            "STELR_utility","STELR_assembly","STELR_te","STELR_liftover","STELR_output",
+            "STELR_utility","STELR_assembly","STELR_te","STELR_liftover","STELR_output","conda",
             #Input & intermediate files
             "fasta_reads","library","reference",
             #STELR params
