@@ -27,6 +27,8 @@ rule get_read_ids: # get a list of all the read IDs from the parsed vcf file
         "00_vcf_parsed.tsv"
     output:
         "00_reads.id"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_assembly]} write_read_IDs '{input}' '{config[contig_name]}' '{output}'"
 
@@ -35,6 +37,8 @@ rule unique_IDlist: # get a list of unique IDs from the readlist
         "{read_ids}.id"
     output:
         "{read_ids}.id.unique"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "cat '{input}' | sort | uniq > '{output}'"
 
@@ -49,6 +53,8 @@ rule filter_readlist: # use seqtk to get the fasta reads from the input reads fi
         unique = "{read_ids}.id.unique"
     output:
         "{read_ids}.fa"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "seqtk subseq '{input.reads}' '{input.unique}' | seqtk seq -a > '{output}'"
 
@@ -58,6 +64,8 @@ rule run_assembly:
     output:
         "01_initial_assembly.fa"
     threads: 1
+    conda:
+        config["conda"][config["assembler"]]
     shell:
         """
         python3 {config[STELR_assembly]} run_{config[assembler]}_assembly '{input}' '{config[contig_name]}' '{threads}' '{config[presets]}' '{output}'
@@ -70,6 +78,8 @@ rule run_polishing:
     output:
         "02_polished_assembly.fa"
     threads: 1
+    conda:
+        config["conda"][config["assembler"]]
     shell:
         """
         python3 {config[STELR_assembly]} run_{config[polisher]}_polishing '{input.initial_assembly}' '{output}' '{input.reads}' '{config[contig_name]}' '{threads}' '{config[polish_iterations]}' '{config[presets]}'
@@ -80,6 +90,8 @@ rule get_parsed_contigs:
         "02_polished_assembly.fa"
     output:
         "03_contig1.fa"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_assembly]} parse_assembled_contig '{input}' '{config[contig_name]}' '{output}'
@@ -98,6 +110,8 @@ rule get_vcf_seq:
         vcf_parsed = "00_vcf_parsed.tsv"
     output:
         "04_vcf_seq.fa"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} get_vcf_seq '{config[contig_name]}' '{input.vcf_parsed}' '{output}'
@@ -112,6 +126,8 @@ rule map_contig:
     params:
         presets = lambda wildcards: {"pacbio":"map-pb","ont":"map-ont"}[config["presets"]]
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         minimap2 -cx '{params.presets}' --secondary=no -v 0 -t '{threads}' '{input.subject}' '{input.query}' > '{output}'
@@ -127,6 +143,8 @@ rule te_contig_map:
     params:
         presets = lambda wildcards: {"pacbio":"map-pb","ont":"map-ont"}[config["presets"]]
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         minimap2 -cx '{params.presets}' '{input.subject}' '{input.library}' -v 0 -t '{threads}' > '{output}'
@@ -137,6 +155,8 @@ rule minimap2bed:
         "{minimap_output}_mm2.paf"
     output:
         "{minimap_output}_mm2.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_utility]} minimap2bed '{input}' '{output}'"
 
@@ -146,6 +166,8 @@ rule vcf_alignment_filter_intersect:
         te_mm2 = "06_te_mm2.bed"
     output:
         "07_te2contig_filter.tsv"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools intersect -a '{input.te_mm2}' -b '{input.vcf_seq_mm2}' -wao > '{output}'
@@ -156,6 +178,8 @@ rule vcf_alignment_filter:
         "07_te2contig_filter.tsv"
     output:
         "08_te2contig_filtered.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} vcf_alignment_filter '{input}' '{output}'
@@ -166,6 +190,8 @@ rule te_annotation_sort:
         "08_te2contig_filtered.bed"
     output:
         "08_te2contig_sorted.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools sort -i {input} > {output}
@@ -176,6 +202,8 @@ rule te_annotation_merge:
         "08_te2contig_sorted.bed"
     output:
         "09_te2contig_merged.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools merge -d 10000 -c 4,6 -o distinct,distinct -delim "|" -i '{input}' > '{output}'
@@ -186,6 +214,8 @@ checkpoint annotate_contig:
         "09_te2contig_merged.bed"
     output:
         "tes/annotation.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} annotate_contig '{input}' '{output}'
@@ -199,6 +229,8 @@ rule rm_te_fasta:
         sequence = "03_contig1.fa"
     output:
         "rm_01_annotated_tes.fasta"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools getfasta -fi '{input.sequence}' -bed '{input.bed_file}' > '{output}'
@@ -211,6 +243,8 @@ rule rm_annotate:
     output:
         "rm_01_annotated_tes.fasta.out.gff"
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         RepeatMasker -gff -s -nolow -no_is -xsmall -e ncbi -lib '{input.te_library}' -pa '{threads}' '{input.te_fasta}'
@@ -221,6 +255,8 @@ rule rm_annotation_sort:
         "rm_01_annotated_tes.fasta.out.gff"
     output:
         "rm_02_annotated_tes.out.sort.gff"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools sort -i '{input}' > '{output}'
@@ -231,6 +267,8 @@ rule rm_annotation_parse_merge:
         "rm_02_annotated_tes.out.sort.gff"
     output:
         "rm_03_annotated_tes_parsed.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} rm_parse_merge '{input}' '{output}'
@@ -241,6 +279,8 @@ rule rm_annotation_bedtools_merge:
         "rm_03_annotated_tes_parsed.bed"
     output:
         "rm_04_annotated_tes_merged.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         bedtools merge -c 4,6 -o distinct -delim "|" -i '{input}' > '{output}'
@@ -252,6 +292,8 @@ rule rm_reannotate:
         original_bed = "tes/annotation.bed"
     output:
         "rm_05_annotation.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_te]} rm_reannotate '{input.repeat_masker_out}' '{input.original_bed}' '{output}'
@@ -268,6 +310,8 @@ rule make_te_dirs:
         te_annotation
     output:
         "tes/{te}/00_annotation.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_te]} make_te_dir '{input}' '{output}'"
 
@@ -276,6 +320,8 @@ rule make_te_json:
         "tes/{te}/00_annotation.bed"
     output:
         "tes/{te}/00_annotation.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_liftover]} make_json '{input}' '{output}'"
 
@@ -285,6 +331,8 @@ rule build_index:
     output:
         "{genome}.fai"
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         samtools faidx '{input}' || true
@@ -296,6 +344,8 @@ rule get_genome_size:
         "{genome}.fai"
     output:
         "{genome}.size"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_liftover]} get_genome_size '{input}' '{output}'"
 
@@ -308,6 +358,8 @@ rule flank_bed:
         "tes/{te}/12_{flank}_flank.bed"
     params:
         flank_len = config["flank_len"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_liftover]} flank_bed '{input.fasta}' '{input.contig_size}' '{input.te_dict}' '{params.flank_len}' '{output}'
@@ -320,6 +372,8 @@ rule flank_fasta:
         bed = "tes/{te}/12_{flank}_flank.bed"
     output:
         "tes/{te}/12_{flank}_flank.fa"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input.bed}' ]; then
@@ -339,6 +393,8 @@ rule align_flank:
         preset = "asm10",
         num_secondary = 10
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input.flank_fa}' ]; then
@@ -353,6 +409,8 @@ rule get_flank_alignment_info:
         "tes/{te}/13_{flank}_flank.paf"
     output:
         "tes/{te}/14_{flank}_flank.info"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -369,6 +427,8 @@ rule flank_paf_to_bed:
         "tes/{te}/14_{flank}_flank.bed_unsorted"
     params:
         different_contig_name = config["different_contig_name"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -383,6 +443,8 @@ rule sort_flank_bed:
         "tes/{te}/14_{flank}_flank.bed_unsorted"
     output:
         "tes/{te}/14_{flank}_flank.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -398,6 +460,8 @@ rule closest_flank_maps_to_ref:
         flank_3p = "tes/{te}/14_3p_flank.bed"
     output:
         "tes/{te}/15_flank_overlap.bed"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input.flank_5p}' ] && [ -s '{input.flank_3p}' ]; then
@@ -414,6 +478,8 @@ checkpoint json_for_report:
         info_3p = "tes/{te}/14_3p_flank.info"
     output:
         "tes/{te}/15_flank_overlap.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_liftover]} bed_to_json {input.overlap} {input.info_5p} {input.info_3p} {output} || true
@@ -431,6 +497,8 @@ rule make_report:
     params: 
         flank_overlap_max = config["overlap"],
         flank_gap_max = config["gap"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_liftover]} make_report {input.overlap} {wildcards.overlap_id} {input.te_json} {input.ref_bed} {input.reference} {params.flank_overlap_max} {params.flank_gap_max} {output} || true
@@ -459,6 +527,8 @@ rule best_report:
         overlap_reports = overlap_ids_report
     output:
         "tes/{te}/17_best_report.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_liftover]} choose_report {output} {input}"
 
@@ -476,6 +546,8 @@ rule read_context:
         vcf_parsed_new = "00_parsed_vcf_with_readcount.tsv"
     params:
         window = 1000
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_assembly]} read_context '{config[contig_name]}' '{input.vcf_parsed}' '{input.bam}' '{output.read_ids}' '{output.vcf_parsed_new}' '{params.window}'"
 
@@ -492,6 +564,8 @@ rule get_reverse_complement:
         "03_contig1.fa"
     output:
         "10_revcomp.fa"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_utility]} get_rev_comp_sequence '{input}' '{output}'
@@ -506,6 +580,8 @@ rule realignment:
     params:
         presets = lambda wildcards: {"pacbio":"map-pb","ont":"map-ont"}[config["presets"]]
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         minimap2 -t {threads} -a -x '{params.presets}' -v 0 '{input.contig}' '{input.reads}' > '{output}'
@@ -517,6 +593,8 @@ rule realignment_to_bam:
     output:
         "{contig_revcomp}_realign.bam"
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -532,6 +610,8 @@ rule sort_index_realignment:
     output:
         "{contig_revcomp}_realign.sort.bam"
     threads: config["threads"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input}' ]; then
@@ -557,6 +637,8 @@ rule estimate_te_depth:
     params:
         te_interval = config["af_te_interval"],
         te_offset = config["af_te_offset"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input.bam}' ]; then
@@ -576,6 +658,8 @@ rule estimate_flank_depth:
     params:
         flank_len = config["af_flank_interval"],
         flank_offset = config["af_flank_offset"]
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         if [ -s '{input.bam}' ]; then
@@ -593,6 +677,8 @@ rule estimate_coverage:
         flank_3p = "tes/{te}/{contig_revcomp}_3p_flank.depth"
     output:
         "tes/{te}/{contig_revcomp}.freq"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_te]} estimate_coverage '{input.te_5p}' '{input.te_3p}' '{input.flank_5p}' '{input.flank_3p}' '{output}'"
 
@@ -602,6 +688,8 @@ rule get_allele_frequency:
         rev = "tes/{te}/10_revcomp.freq"
     output:
         "tes/{te}/11_allele_frequency.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         "python3 {config[STELR_te]} get_af '{input.fwd}' '{input.rev}' '{output}'"
 
@@ -618,6 +706,8 @@ rule individual_json:
         contig_file = "03_contig1.fa"
     output:
         "tes/{te}/18_output.json"
+    conda:
+        config["conda"]["stable_environment"]
     shell:
         """
         python3 {config[STELR_output]} make_json_output {input} {output} {config[contig_name]}
