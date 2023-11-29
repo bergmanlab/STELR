@@ -1,3 +1,7 @@
+import os
+import json
+import traceback
+
 
 def all_tes(wildcards): #expects annotation file to be in contigs/{contig}/tes/
     tes = []
@@ -513,6 +517,7 @@ def overlap_ids_report(wildcards):
             overlap_ids = [key for key in overlap_dict]
         return [f"tes/{wildcards.te}/16_{overlap_id}_report.json" for overlap_id in overlap_ids]
     except:
+        print(traceback.format_exc())
         return []
 rule best_report:
     input:

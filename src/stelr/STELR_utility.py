@@ -221,7 +221,7 @@ def progress_bar(*args):
     return f"{contigs_done} out of {contigs_todo}"
 
 def prefix(string_to_parse, thing_before, last_index=-1):
-    return thing_before.join(string_to_parse.split(thing_before)[:-1])
+    return thing_before.join(string_to_parse.split(thing_before)[:last_index])
             
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])
