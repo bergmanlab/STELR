@@ -54,6 +54,7 @@ rule sort_index_bam:
         "python3 {config[STELR_alignment]} sort_index_bam '{input}' '{output}' '{threads}'"
     
 rule align_with_ngmlr:#TODO: add timers to these alignments
+    priority: 10
     input:
         reads = config["fasta_reads"],
         reference = config["reference"]
@@ -71,6 +72,7 @@ rule align_with_ngmlr:#TODO: add timers to these alignments
         """
 
 rule align_with_minimap2:
+    priority: 10
     input:
         reads = config["fasta_reads"],
         reference = config["reference"]
@@ -320,6 +322,7 @@ rule contig_smk:
 # repeatmask reference genome using custom TE library
 #   Not sure which step in the workflow this actually belongs to
 rule ref_repeatmask:
+    priority: 1
     input:
         ref = config["reference"],
         lib = config["library"]
