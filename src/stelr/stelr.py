@@ -52,6 +52,8 @@ def setup_run(if_verbose, config):
     mkdir(if_verbose, tmp_dir)
     mkdir(if_verbose, os.path.join(tmp_dir, "input"))
 
+    reference_name = os.path.basename(config['reference'])
+
     config.update(process_input_files(
         {"reads":config["reads"],
         "reference":config["reference"],
@@ -60,20 +62,39 @@ def setup_run(if_verbose, config):
         config["sample_name"])
     )
 
-    config["output"] = [
-        f"reads.stelr.contig.fasta",
-        f"reads.stelr.te.fasta",
-        f"reads.stelr.bed",
-        f"reads.stelr.json",
-        f"reads.stelr.expanded.json",
-        f"reads.stelr.vcf"
-    ]
+    if config["make_annotation"]: output_type = "make_annotation"
+    else: output_type = "default"
+
+    config["output"] = {
+        "default":{
+            f"{config['sample_name']}.stelr.contig.fasta":  "reads.stelr.te.fasta",
+            f"{config['sample_name']}.stelr.te.fasta":      "reads.stelr.te.fasta",
+            f"{config['sample_name']}.stelr.bed":           "reads.stelr.bed",
+            f"{config['sample_name']}.stelr.json":          "reads.stelr.json",
+            f"{config['sample_name']}.stelr.expanded.json": "reads.stelr.expanded.json",
+            f"{config['sample_name']}.stelr.vcf":           "reads.stelr.vcf"
+        },
+        "make_annotation":{
+            f"{reference_name}.te.bed":                     "ref_repeatmask/reference.fasta.te.bed"
+        }
+    }[output_type]
+
+    if type(config["output"]) is dict:
+        config["final_output"] = {key:f'{tmp_dir}/{config["output"][key]}' for key in config["output"]}
+        config["output"] = [config["output"][key] for key in config["output"]]
+    else:
+        config["final_output"] = {key:f"{tmp_dir}/{key}" for key in config["output"]}
 
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
     config["config_path"] = f"{tmp_dir}/config.json" # path to config file
     with open(config["config_path"], "w") as conf:
-        json.dump(config, conf, indent=4) #write config file as json    
+        json.dump(config, conf, indent=4) #write config file as json
+    
+    if config["annotation"]:
+        rm_dir = f"{tmp_dir}/ref_repeatmask"
+        mkdir(if_verbose, rm_dir)
+        symlink(config["annotation"],f"{rm_dir}/reference.fasta.te.bed")
     
     return config
 
@@ -95,8 +116,8 @@ def run_workflow(config):
         else:
             subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
             subprocess.run(command + ["--rerun-incomplete"] + ["--rerun-triggers","mtime"], cwd=config["tmp_dir"])
-        for output_file in config["output"]:
-            os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file.replace('reads',config['sample_name'])}")
+        for output_file in config["final_output"]:#TODO
+            os.rename(config["final_output"][output_file],output_file)
         if not config["keep_files"]:
             rmtree(config['tmp_dir'])
     except Exception as e:
@@ -361,6 +382,19 @@ def get_args():
         "--install",
         action="store_true",
         help="Use this option to install the stable conda environments required to run STELR.",
+        required=False,
+    )
+    optional.add_argument(
+        "--make_annotation",
+        action="store_true",
+        help="This option will only run the reference annotation part of the pipeline.",
+        required=False,
+    )
+    optional.add_argument(
+        "-a",
+        "--annotation",
+        type=str,
+        help="reference genome annotation in bed format",
         required=False,
     )
     parser._action_groups.append(optional)
