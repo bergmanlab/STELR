@@ -222,6 +222,17 @@ def progress_bar(*args):
 
 def prefix(string_to_parse, thing_before, last_index=-1):
     return thing_before.join(string_to_parse.split(thing_before)[:last_index])
+
+def symlink(input_file, link): #create a symbolic link at the output location referencing the input path.
+    input_file = os.path.abspath(input_file)
+    #abspath needed because path for os.symlink is relative to output, not current directory.
+    if os.path.islink(link):
+        os.remove(link)
+    try:
+        os.symlink(input_file, link)
+    except Exception:
+        logging.exception(f"Create symbolic link for {input_file} failed")
+        sys.exit(1)
             
 if __name__ == '__main__':
     globals()[sys.argv[1]](*sys.argv[2:])

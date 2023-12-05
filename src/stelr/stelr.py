@@ -10,6 +10,7 @@ import logging
 import json
 from shutil import rmtree
 from time import perf_counter
+from STELR_utility import symlink
 
 def main():
     config = get_args()
@@ -152,18 +153,6 @@ def process_input_files(input_file_paths, input_dir, sample_name):
     if ".bam" in new_paths["reads"]: new_paths["fasta_reads"] = f"{input_dir}/reads.fasta"
     else: new_paths["fasta_reads"] = new_paths["reads"]
     return new_paths
-        
-
-def symlink(input_file, link): #create a symbolic link at the output location referencing the input path.
-    input_file = os.path.abspath(input_file)
-    #abspath needed because path for os.symlink is relative to output, not current directory.
-    if os.path.islink(link):
-        os.remove(link)
-    try:
-        os.symlink(input_file, link)
-    except Exception:
-        logging.exception(f"Create symbolic link for {input_file} failed")
-        sys.exit(1)
 
 def mkdir(if_verbose, dir):
     if os.path.isdir(dir):

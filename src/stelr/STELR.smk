@@ -197,7 +197,9 @@ rule sv_repeatmask:
     conda:
         config["conda"]["stable_environment"]
     shell:
-        "python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'"
+        """
+        python3 {config[STELR_sv]} repeatmask '{params.repeatmasker_dir}' '{input.ins_seqs}' '{input.library}' '{threads}'
+        """
 
 rule sv_RM_sort:
     input:
