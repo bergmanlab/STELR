@@ -23,7 +23,8 @@ def main():
     else:
         config["verbose"] = False #TODO: add as option later
         if_verbose = verbose(config["verbose"])
-        config["sample_name"] = os.path.splitext(os.path.basename(config["reads"]))[0]
+        try: config["sample_name"] = os.path.splitext(os.path.basename(config["reads"]))[0]
+        except: config["sample_name"] = "sample"
     
         config.update(handle_file_paths(config))
         config.update(setup_run(if_verbose, config))
@@ -137,7 +138,8 @@ def process_input_files(input_file_paths, input_dir, sample_name):
         "reference":[".fasta",".fastq",".fa",".fq",".fna",".fa"]
         }
     new_paths = {}
-    for file in ["reads","reference","library"]:
+    input_file_types = [file for file in ["reads","reference","library"] if input_file_paths[file]]
+    for file in input_file_types:
         try: open(input_file_paths[file], "r")
         except Exception as e:
             print(e)
@@ -150,6 +152,8 @@ def process_input_files(input_file_paths, input_dir, sample_name):
         else: 
             new_paths[file] = f"{input_dir}/{file}{file_extension_of(file)}"
             symlink(input_file_paths[file], new_paths[file])
+    for file in [file for file in ["reads","reference","library"] if not input_file_paths[file]]:
+        new_paths[file] = f"{file}.f"
     if ".bam" in new_paths["reads"]: new_paths["fasta_reads"] = f"{input_dir}/reads.fasta"
     else: new_paths["fasta_reads"] = new_paths["reads"]
     return new_paths
@@ -220,31 +224,34 @@ def get_args():
     optional = parser._action_groups.pop()
     required = parser.add_argument_group("required arguments")
 
-    # required
-    if not "--install" in sys.argv:
-        required.add_argument(
-            "-i",
-            "--reads",
-            type=str,
-            help="reads in fasta/fastq format or read alignments in bam format",
-            required=True,
-        )
-        required.add_argument(
-            "-r",
-            "--reference",
-            type=str,
-            help="reference genome in fasta format",
-            required=True,
-        )
-        required.add_argument(
-            "-l",
-            "--library",
-            type=str,
-            help="TE consensus sequences in fasta format",
-            required=True,
-        )
-        
+    # required args
+    required_args = {
+        "reads":{"commands":["-i","--reads"],"properties":{"type":str,"help":"reads in fasta/fastq format or read alignments in bam format","required":True}},
+        "reference":{"commands":["-r","--reference"],"properties":{"type":str,"help":"reference genome in fasta format","required":True}},
+        "library":{"commands":["-l","--library"],"properties":{"type":str,"help":"TE consensus sequences in fasta format","required":True}}
+    }
+    optional_args = {}
 
+    if "--install" in sys.argv:
+        optional_args.update(required_args)
+        required_args = {}
+    elif "--make_annotation" in sys.argv:
+        print("arg make annotation")
+        optional_args.update({"reference":required_args.pop("reads")})
+    for arg in optional_args:
+        optional_args[arg]["properties"]["required"] = False
+
+    for arg in required_args:
+        required.add_argument(
+            *required_args[arg]["commands"],
+            **required_args[arg]["properties"]
+        )
+    for arg in optional_args:
+        optional.add_argument(
+            *optional_args[arg]["commands"],
+            **optional_args[arg]["properties"]
+        )
+    
     # optional
     optional.add_argument(
         "--aligner",
