@@ -3,6 +3,7 @@ import glob
 telr_dir = config["telr_dir"]
 sys.path.insert(0,telr_dir)
 from STELR_utility import getdict, setdict, abs_path
+import subprocess
 
 
 rule all:
@@ -235,12 +236,30 @@ checkpoint run_telr:
 
 """
 
-LIFTOVER EVALUATION
+EVALUATE STELR COORDINATE AND FAMILY PREDICTIONS
 
 """
 #These rules are pulled from the script liftover_evaluation.py
 
-
+rule filter_annotation:
+    input:
+        stelr_bed = "",
+        filter_region = ""
+    output:
+        "{simulation}/liftover_evaluation/annotation.filter.bed"
+    params:
+        exclude_families = ["INE_1"]
+    run:
+        exclude_families = set(params.exclude_families)
+        def if_not_excluded(line):
+            data = line.split("\t")
+            if "|" in data[3] or data[3] in exclude_families: #nested insertions or contains excluded TE families
+                return ""
+            return f"{line}\n"
+        command = ["bedtools","intersect","-a",input.stelr_bed,"-b",input.filter_region,"-u"]
+        filtered_annotation = "".join([if_not_excluded(line) for line in subprocess.run(command, capture_output=True, text=True).stdout.split("\n")])
+        with open(output[0], "w") as out:
+            out.write(filtered_annotation)
 
 
 
