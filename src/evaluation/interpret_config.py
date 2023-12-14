@@ -2,7 +2,7 @@ import sys
 import json
 import os
 import traceback
-telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
+telr_dir = f"{__file__.split('/evaluation')[0]}/stelr"
 sys.path.insert(0,telr_dir)
 from STELR_utility import memory_format, check_exist, getdict, setdict
 
@@ -105,6 +105,8 @@ def config_from_file(file_path):
                                 category[title][line.item] = True
                             else: category[title][subtitle] = line.item
                     except: pass
+    if "file" in category["telr parameters"]: #be careful this is not very durable
+        category["telr parameters"]["reference annotation"] = category["telr parameters"].pop("file")
     format_dict = {
         ("resources","estimated memory"):memory_format,
         ("resources","threads"):int
