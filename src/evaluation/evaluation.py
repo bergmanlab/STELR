@@ -5,7 +5,7 @@ import json
 import subprocess
 import glob
 import traceback
-telr_dir = f"{__file__.split('/evaluation')[0]}/telr"
+telr_dir = f"{__file__.split('/evaluation')[0]}/stelr"
 sys.path.insert(0,telr_dir)
 from STELR_utility import getdict, setdict, memory_format, abs_path, mkdir, symlink, check_exist, string_to_bool
 from interpret_config import config_from_file
@@ -37,7 +37,7 @@ def main():
 def get_file_paths():
     eval_src = abs_path(__file__)
     eval_src_dir = os.path.split(eval_src)[0]
-    telr_dir = eval_src_dir.split("evaluation")[0] + "telr"
+    telr_dir = eval_src_dir.split("evaluation")[0] + "stelr"
     env_dir = eval_src_dir.split("src")[0] + "envs"
     
     path_dict = {
@@ -48,8 +48,13 @@ def get_file_paths():
         "telr_conda":f"{env_dir}/stelr.yaml",
         "liftover_eval":f"{eval_src_dir}/liftover_evaluation.py",
         "af_eval":f"{eval_src_dir}/telr_af_eval.py",
-        "seq_eval":f"{eval_src_dir}/telr_seq_eval.py"
+        "seq_eval":f"{eval_src_dir}/telr_seq_eval.py",
+        "envs":f"{env_dir}/snakemake"
     }
+    with open(f"{env_dir}/stelr_environments.json") as input:
+        env_files = json.load(input)
+        path_dict["conda"] = {key:f"{path_dict['envs']}/{key}.yaml" for key in env_files}
+        print(path_dict["conda"])
 
     return path_dict
 
@@ -140,11 +145,12 @@ def setup_run(config):
                     sim_dict["file"] = link = abs_path(f"{sim_dir}/simulated_reads.fq")
                     if check_exist(input_file):
                         symlink(input_file,link)
-                    config["output"] += [
-                        f"{sim_dir}/liftover_eval/annotation.filter.bed",
-                        f"{sim_dir}/af_eval/telr_eval_af.json",
-                        f"{sim_dir}/seq_eval/seq_eval.json"
-                    ]
+                    config["output"] += [abs_path(f"{sim_dir}/simulated_reads.stelr.py")]#output temporarily set to stelr output?
+                    #config["output"] += [
+                    #    f"{sim_dir}/liftover_eval/annotation.filter.bed",
+                    #    f"{sim_dir}/af_eval/telr_eval_af.json",
+                    #    f"{sim_dir}/seq_eval/seq_eval.json"
+                    #]
     
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
@@ -224,7 +230,7 @@ def run_workflow(snakefile, config):
         "snakemake",
         "-s", snakefile,
         "--configfile", config["config_file"],
-        "--use-conda"
+        "--use-conda","--conda-prefix",config["envs"]
     ]
     optional_args = {("resources","threads"):"--cores",("resources","estimated memory"):"--resources"}
     try:
