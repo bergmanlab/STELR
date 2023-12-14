@@ -10,8 +10,18 @@ rule all:
         config["output"]
     localrule: True
 
+"""
 
-def if_accession(wildcards):
+DOWNLOAD GENOME AND MODEL FILES
+
+"""
+
+def if_accession(wildcards): 
+    #rudimentary check that the accession number given follows the right format eg starts with "GCA"
+    #if no accession number was given, the config["input options"]["{reference} reference"] dict will not contain the "accession" key
+    #in that case, this function fails at the getdict(), the exception is caught, and it returns []
+    #this should only happen when the genome file was given and the accession # wasn't, so the download_genome rule will not be run either way
+    #However, doing it this way prevents an error when snakemake is assessing this function while calculating the DAG.
     try:
         accession = getdict(config, ["input options", f"{wildcards.reference} reference","accession"])
         if accession[:3] == "GCA":
@@ -20,10 +30,10 @@ def if_accession(wildcards):
     return []
 rule download_genome:
     params:
-        accession = if_accession
+        accession = if_accession #points to the above function, which snakemake runs when assessing the DAG
     output:
         "{reference}_reference.fasta"
-    localrule: True
+    localrule: True # don't start a cluster job for this rule
     conda:
         config["conda"]["datasets"]
     shell:
@@ -38,8 +48,10 @@ rule download_genome:
         mv ncbi_temp_{params.accession}/{output} {output}
         rm -r ncbi_temp_{params.accession}        
         """
+        #Note: I am really not sure if the sed script will work with other genome files; this may need to be amended if the eval pipeline is expanded to more genomes
 
 rule download_model:
+    #If the model is given without a file path, it downloads it from the pbsim2 creator's git repo
     params:
         model = config["simulation parameters"]["model"]
     output:
@@ -52,13 +64,23 @@ rule download_model:
         wget -L https://raw.githubusercontent.com/yukiteruono/pbsim2/master/data/{output} -O "{output}"
         """
 
+"""
+
+SIMULATE LONG READS
+
+"""
+
 def simulation_time(ideal_time):
+    #this really still needs to be worked out
     config_time = config["slurm options"]["time limit"]
     time = str(min(int(config_time.replace(":","")), ideal_time))
     time = int("0"+time[:-4])*60 + int("0"+time[-4:-2]) + int("0"+time[-2:])/60
     print(f"config time: {config_time} ideal time: {ideal_time} returned time: {time}")
     return time
 rule simulate_reads:
+    #This is the rule that actually runs pbsim2 to simulate the reads
+    #It does so on "sub-simulations" which are requested by the combine_simulations rule below
+    #This rule is run 1-2 times in total for each simulation the pipeline performs
     input:
         reference = "{ref_type}_reference.fasta",
         model = config["simulation parameters"]["model"]["file"]
@@ -85,8 +107,12 @@ rule simulate_reads:
         """
 
 def sub_simulations(wildcards):
+    #Determines the two subsimulations from the coverage and genotype of each simulation
     coverage = int(wildcards.cov.split("/")[-1])
     simulation = f"{wildcards.cov}x_{wildcards.proportion_genotype}"
+    #Proportion dict is determined by the "proportion_genotype" wildcard eg "diploid_homozygous"
+    #The "proportion" in question is the proportion of reads simulated from the mapping vs community reference
+    #For a diploid heterozygous simulation eg, this is 1:1. 
     proportion = {
         "diploid_heterozygous":{"community":0.5,"mapping":0.5},
         "diploid_homozygous":{"community":1, "mapping":0},
@@ -95,8 +121,12 @@ def sub_simulations(wildcards):
         "tetraploid_triplex":{"community":0.75,"mapping":0.25},
         "tetraploid_quadruplex":{"community":1, "mapping":0},
     }[wildcards.proportion_genotype]
+    #Multiplies the total coverage by the proportion for that reference genome, and that is the coverage for that reference
+    #This is a list comprehension so that it returns only one subsimulation for homozygous simulations, rather than asking snakemake to make a "0x" simulation
     return [f"{simulation}/{proportion[reference]*coverage}x_{reference}_simulated_reads.fq" for reference in ("community","mapping") if not proportion[reference] == 0]
 rule combine_simulation:
+    #When making a heterozygous / mixed simulation, it simulates a proportional fraction of each genome
+    #These two parts are just combined straightforwardly with cat
     input:
         sub_simulations
     output:
@@ -112,29 +142,60 @@ rule combine_simulation:
         cat {input} > {output}
         """
 
-def telr_command(wildcards):
+
+"""
+
+RUN STELR OR TELR
+
+"""
+
+#run_stelr and run_telr are separate rules because the outputs have different names (.stelr vs .telr)
+#and because this will make it easier to adapt this pipeline for new options which may be added to STELR in the future
+
+rule get_mapping_annotation:
+    #If running STELR, the evaluation pipeline will go ahead and generate a single repeatmasked reference annotation
+    #This avoids having STELR run RepeatMasker on the reference genome individually for every simulation, which
+    #is fairly resource intensive and completely redundant.
+    input: "mapping_reference.fasta"
+    output: "mapping_reference.fasta.te.bed"
+    conda: config["telr_conda"]
+    threads: config["resources"]["threads"]
+    resources: 
+        mem_mb = 60000,
+        runtime = lambda wildcards: simulation_time(60000)#TODO: fix this
+    conda: config["telr_conda"]
+    shell:
+        """
+        python3 {config[telr]} -r {input} -t {threads} --make_annotation
+        """
+
+def stelr_command(wildcards):
+    # this function returns the appropriate command for running stelr:
+    # python3 + path to src; + the --resume tag if an intermediate file directory already exists for STELR
+    # (this may happen if the evaluation pipeline was interrupted then resumed)
     if "telr version 1.x" in config["telr parameters"]:
-        return "telr"
+        return "telr" #left in just to avoid errors during DAG calculation, but this will not actually be used.
     else:
         command = f"python3 {config['telr']}"
-        telr_dirs = glob.glob(f"{wildcards.simulation}/telr_run_*")
-        if len(telr_dirs) == 1:
-            run_number = telr_dirs[0].split("telr_run_")[1]
+        stelr_dirs = glob.glob(f"{wildcards.simulation}/stelr_run_*")
+        if len(stelr_dirs) == 1:
+            run_number = stelr_dirs[0].split("stelr_run_")[1]
             return f"{command} --resume {run_number}"
         else: return command
 
-checkpoint run_telr:
+checkpoint run_stelr:
     input:
         reference = "mapping_reference.fasta",
         reads = "{simulation}/simulated_reads.fq",
         library = "library.fa",
+        reference_annotation = "mapping_reference.fasta.te.bed"
     output:
-        "{simulation}/simulated_reads.telr.{output}"
+        "{simulation}/simulated_reads.stelr.{output}"
     params:
         polish_iterations = config["telr parameters"]["polishing iterations"],
         assembler = config["telr parameters"]["assembler"],
         polisher = config["telr parameters"]["polisher"],
-        command = telr_command,
+        command = stelr_command,
         slurm_log = "{simulation}_stelr_slurm.log",
         slurm_err = "{simulation}_stelr_slurm.err"
     threads: config["resources"]["threads"]
@@ -144,28 +205,49 @@ checkpoint run_telr:
     conda: config["telr_conda"]
     shell:
         """
-        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} -o {wildcards.simulation}
+        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} -a {input.reference_annotation} -o {wildcards.simulation}
         """
 
-rule liftover_annotation:
+checkpoint run_telr:
     input:
-        community_reference = "community_reference.fasta",
-        community_annotation = "community_annotation.bed",
-        mapping_reference = "mapping_reference.fasta",
-        mapping_annotation = "mapping_annotation.bed"
+        reference = "mapping_reference.fasta",
+        reads = "{simulation}/simulated_reads.fq",
+        library = "library.fa"
     output:
-        "liftover_nonref.bed"
+        "{simulation}/simulated_reads.telr.{output}"
+    params:
+        polish_iterations = config["telr parameters"]["polishing iterations"],
+        assembler = config["telr parameters"]["assembler"],
+        polisher = config["telr parameters"]["polisher"],
+        slurm_log = "{simulation}_stelr_slurm.log",
+        slurm_err = "{simulation}_stelr_slurm.err"
     threads: config["resources"]["threads"]
-    localrule: True
+    resources: 
+        mem_mb = 60000,
+        runtime = lambda wildcards: simulation_time(60000)
+    conda: config["telr_conda"]
     shell:
         """
-        python3 {config[liftover]} --fasta1 {input.community_reference} --fasta2 {input.mapping_reference} -1 {input.community_annotation} -2 {input.mapping_reference} -o . -t {threads} -g 50 -p 50 -x "asm10" -k
+        telr -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} {params.annotation} -o {wildcards.simulation}
         """
+    
+
+
+"""
+
+LIFTOVER EVALUATION
+
+"""
+#These rules are pulled from the script liftover_evaluation.py
+
+
+
+
 
 '''
 rule liftover_eval:
     input:
-        telr_out = "{simulation}/simulated_reads.telr.contig.fasta",
+        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta",
         region_mask = "regular_recomb.bed"
         #annotation = "liftover_nonref.bed"
     output:
@@ -181,7 +263,7 @@ rule liftover_eval:
 
 rule af_eval:
     input:
-        telr_out = "{simulation}/simulated_reads.telr.contig.fasta"
+        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta"
         #annotation = "liftover_nonref.bed"
     output:
         "{simulation}/af_eval/telr_eval_af.json"
@@ -196,7 +278,7 @@ rule af_eval:
 
 rule seq_eval:
     input:
-        telr_out = "{simulation}/simulated_reads.telr.contig.fasta"
+        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta"
         #annotation = "liftover_nonref.bed"
     output:
         "{simulation}/seq_eval/seq_eval.json"
