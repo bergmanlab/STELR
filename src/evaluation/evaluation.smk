@@ -247,10 +247,10 @@ rule region_family_filter:
     # By excluding "nested" insertions ie insertions with multiple predicted families,
     # And by excluding insertions labelled as excluded families, ie "INE_1"
     input:
-        input_bed = "{some_file}.bed"
+        input_bed = "{some_file}.bed",
         filter_region = "regular_recomb.bed"
     output:
-        "{some_file}.filter.bed"
+        "{some_file}_filter.bed"
     params:
         exclude_families = ["INE_1"],
         exclude_nested_insertions = True
@@ -278,7 +278,7 @@ rule region_family_filter:
 
 rule count_liftover:
     # count the # of lines in the annotation liftover once instead of doing it for every simulation's evaluation
-    input: "community_annotation.filter.bed"
+    input: "community_annotation_filter.bed"
     output: "liftover_count"
     shell: "cat {input} | wc -l > {output}"
 
@@ -286,7 +286,7 @@ rule prediction_quality_filter:
     # Filter STELR output further by a few quality control metrics.
     input:
         telr_json = "{simulation}/simulated_reads.{telr}.expanded.json",
-        telr_bed_filtered = "{simulation}/simulated_reads.{telr}.filter.bed"
+        telr_bed_filtered = "{simulation}/simulated_reads.{telr}_filter.bed"
     output: 
         filtered_predictions = "{simulation}/{telr}_filtered_predictions.bed",
         prediction_count = "{simulation}/total_{telr}_predictions"
@@ -327,7 +327,7 @@ rule compare_with_annotation:
     # use bedtools to find the regions of overlap (and non-overlap) between TELR predictions and the annotation
     input:
         telr_filtered_predictions = "{simulation}/{telr}_filtered_predictions.bed",
-        filtered_annotation = "community_annotation.filter.bed"
+        filtered_annotation = "community_annotation_filter.bed"
     output:
         overlap = "{simulation}/{telr}_annotation_overlap.bed",
         false_negatives = "{simulation}/{telr}_false_negatives.bed"
@@ -399,7 +399,7 @@ rule liftover_eval:
         region_mask = "regular_recomb.bed"
         #annotation = "liftover_nonref.bed"
     output:
-        "{simulation}/liftover_eval/annotation.filter.bed"
+        "{simulation}/liftover_eval/annotation_filter.bed"
     localrule: True
     shell:
         """

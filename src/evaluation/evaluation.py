@@ -145,7 +145,7 @@ def setup_run(config):
                     sim_dict["file"] = link = abs_path(f"{sim_dir}/simulated_reads.fq")
                     if check_exist(input_file):
                         symlink(input_file,link)
-                    config["output"] += [abs_path(f"{sim_dir}/simulated_reads.stelr.py")]#output temporarily set to stelr output?
+                    config["output"] += [abs_path(f"{sim_dir}/stelr_eval_liftover.json")]#output temporarily set to stelr output?
                     #config["output"] += [
                     #    f"{sim_dir}/liftover_eval/annotation.filter.bed",
                     #    f"{sim_dir}/af_eval/telr_eval_af.json",
