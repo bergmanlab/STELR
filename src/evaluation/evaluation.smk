@@ -4,6 +4,7 @@ telr_dir = config["telr_dir"]
 sys.path.insert(0,telr_dir)
 from STELR_utility import getdict, setdict, abs_path
 import subprocess
+import json
 
 
 rule all:
@@ -241,25 +242,153 @@ EVALUATE STELR COORDINATE AND FAMILY PREDICTIONS
 """
 #These rules are pulled from the script liftover_evaluation.py
 
-rule filter_annotation:
+rule region_family_filter:
+    # Filter a bed file by intersection with the regular recombination region,
+    # By excluding "nested" insertions ie insertions with multiple predicted families,
+    # And by excluding insertions labelled as excluded families, ie "INE_1"
     input:
-        stelr_bed = "",
-        filter_region = ""
+        input_bed = "{some_file}.bed"
+        filter_region = "regular_recomb.bed"
     output:
-        "{simulation}/liftover_evaluation/annotation.filter.bed"
+        "{some_file}.filter.bed"
     params:
-        exclude_families = ["INE_1"]
+        exclude_families = ["INE_1"],
+        exclude_nested_insertions = True
     run:
+        # set up functions to filter file based on params
         exclude_families = set(params.exclude_families)
-        def if_not_excluded(line):
-            data = line.split("\t")
-            if "|" in data[3] or data[3] in exclude_families: #nested insertions or contains excluded TE families
-                return ""
-            return f"{line}\n"
+        filters = {}
+        if params.exclude_nested_insertions:
+            filters["nested_insertions"] = lambda te: "|" in te.split("\t")[3]
+            if exclude_families:
+                filters["exclude_families"] = lambda te: te.split("\t")[3] in exclude_families
+        elif exclude_families:
+            filters["exclude_families"] = lambda te: len(exclude_families.intersection(te.split("\t")[3].split("|"))) > 0
+        
+        # run bedtools intersect to find the intersection between the bed file and the regular recombination region
         command = ["bedtools","intersect","-a",input.stelr_bed,"-b",input.filter_region,"-u"]
-        filtered_annotation = "".join([if_not_excluded(line) for line in subprocess.run(command, capture_output=True, text=True).stdout.split("\n")])
+        intersection = subprocess.run(command, capture_output=True, text=True).stdout.split("\n")
+
+        # filter the intersection using functions set up earlier based on params.
+        filtered_annotation = [line for line in intersection if not any([filters[param](line) for param in filters])]
+
+        # write output
         with open(output[0], "w") as out:
-            out.write(filtered_annotation)
+            out.write("\n".join(filtered_annotation))
+
+rule count_liftover:
+    # count the # of lines in the annotation liftover once instead of doing it for every simulation's evaluation
+    input: "community_annotation.filter.bed"
+    output: "liftover_count"
+    shell: "cat {input} | wc -l > {output}"
+
+rule prediction_quality_filter:
+    # Filter STELR output further by a few quality control metrics.
+    input:
+        telr_json = "{simulation}/simulated_reads.{telr}.expanded.json",
+        telr_bed_filtered = "{simulation}/simulated_reads.{telr}.filter.bed"
+    output: 
+        filtered_predictions = "{simulation}/{telr}_filtered_predictions.bed",
+        prediction_count = "{simulation}/total_{telr}_predictions"
+    run:
+        # Create the filtered list of TE ids from filtered bed file
+        with open(input.filtered_bed,"r") as input_file:
+            filtered_te_ids = {"_".join(line.strip().split("\t")[:4]) for line in input_file}
+        # Load the expanded output json from (s)telr
+        with open(input.telr_json,"r") as input_file:
+            telr_json = json.load(input_file)
+        # Key each TE's output dict to its bed format string
+        telr_json = {"\t".join([str(te_dict[key]) for key in ["chrom","start","end","family"]] + [".",te_dict["strand"]]):te_dict for te_dict in telr_json}
+
+        # Define the quality checks TEs must pass to pass quality control
+        quality_checks = {                                      # TEs pass each quality control step if:
+            "ID": lambda value: value in filtered_te_ids,           # they are one of the filtered TEs from the previous step
+            "allele_frequency": lambda value: value is not None,    # they have a predicted value for allele frequency
+            "support": lambda value: value == "both_sides"          # they have both-sided support
+        }
+
+        # make a list of TEs which failed because of each quality check
+        failed_tes = {value:[te for te in te_dict if not quality_checks[value](te_dict[te][value])] for value in quality_checks}
+        # the filtered TEs are those which are not present in any of the quality check failure lists.
+        filtered_predictions = [te for te in te_dict if not any([lambda value: te in failed_tes[value] for value in quality_checks])]
+
+        # count and print the total number of TELR predictions that passed region, family, and quality control checks
+        total_filtered_predictions = len(filtered_predictions)
+        print(f"Total {wildcards.telr.upper()} Predictions (filtered): {total_filtered_predictions}")
+
+        # write the # of total predictions to an output file
+        with open(output.prediction_count,"w") as output_file:
+            output_file.write(total_filtered_predictions)
+        # write the list of filtered predictions in bed format to an output file
+        with open(output.filtered_predictions,"w") as output_file:
+            output.write("\n".join(filtered_predictions))
+
+rule compare_with_annotation:
+    # use bedtools to find the regions of overlap (and non-overlap) between TELR predictions and the annotation
+    input:
+        telr_filtered_predictions = "{simulation}/{telr}_filtered_predictions.bed",
+        filtered_annotation = "community_annotation.filter.bed"
+    output:
+        overlap = "{simulation}/{telr}_annotation_overlap.bed",
+        false_negatives = "{simulation}/{telr}_false_negatives.bed"
+    params:
+        window = 5
+    shell: 
+        """
+        bedtools window -w {params.window} -a {input.telr_filtered_predictions} -b {input.filtered_annotation} > {output.overlap}
+        bedtools window -w {params.window} -a {input.filtered_annotation} -b {input.telr_filtered_predictions} -v > {output.false_negatives}
+        """
+
+rule parse_overlap:
+    # Calculate the number of true positives, false positives, and false negatives,
+    # as well as the precision and recall from running STELR on this simulated dataset
+    input:
+        overlap = "{simulation}/{telr}_annotation_overlap.bed",
+        false_negatives = "{simulation}/{telr}_false_negatives.bed",
+        prediction_count = "{simulation}/total_{telr}_predictions",
+        liftover_count = "liftover_count"
+    output: "{simulation}/{telr}_eval_liftover.json"
+    params:
+        exclude_nested_insertions = True,
+        relax_mode = False
+    run:
+        # set conditions by which two sets of families are considered a match based on params
+        if params.exclude_nested_insertions: # only one family allowed per TE
+            family_match = lambda overlap: overlap[3] == overlap[9]
+        elif params.relax_mode: # match as long as any TE family label is present in both sets
+            family_match = lambda overlap: len(set(overlap[3].split("|")).intersection(overlap[9].split("|"))) > 0
+        else: # match only if all TE labels in each set are present in both
+            family_match = lambda overlap: set(overlap[3].split("|")) == set(overlap[9].split("|"))
+        
+        # read in the telr/annotation overlap bed file
+        with open(input.overlap_file,"r") as input_file:
+            tes = input_file.read().split("\n")
+        #read in the counts of telr filtered predictions and the annotation
+        with open(input.prediction_count,"r") as input_file:
+            total_filtered_predictions = int(input_file.read())
+        with open(input.liftover_count,"r") as input_file:
+            liftover_count = int(input_file.read())
+        
+        # create a list of true positives
+        true_positives = [te for te in tes if family_match(te.split("\t"))]
+        # calculate the # of true positives and false positives
+        summary_dict = {"total predictions":total_filtered_predictions,"true positives":len(true_positives)}
+        summary_dict["false positives"] = total_filtered_predictions - summary_dict["true positives"]
+        # count the number of lines in the bed file containing the false negatives
+        with open(input.false_negatives,"rb") as input_file:
+            summary_dict["false negatives"] = sum(1 for _ in input_file)
+        # calculate the precision and recall
+        summary_dict["precision"] = round(summary_dict["true positives"]/total_filtered_predictions, 3)
+        summary_dict["recall"] = round(summary_dict["true positives"]/liftover_count, 3)
+
+        # print summary statistcs and write them to output file
+        telr = wildcards.telr.upper()
+        for stat in ["true positives","false positives","false negatives"]:
+            print(f"Number of {telr} {stat}: {summary_dict[stat]}")        
+        with open(output[0],"w") as output_file:
+            json.dump(summary_dict,output_file)
+
+
 
 
 
