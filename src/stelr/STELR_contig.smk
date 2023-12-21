@@ -83,7 +83,7 @@ rule run_polishing:
         "02_polished_assembly.fa"
     threads: 1
     conda:
-        config["conda"][config["assembler"]]
+        config["conda"][config["polisher"]]
     shell:
         """
         python3 {config[STELR_assembly]} run_{config[polisher]}_polishing '{input.initial_assembly}' '{output}' '{input.reads}' '{config[contig_name]}' '{threads}' '{config[polish_iterations]}' '{config[presets]}'
