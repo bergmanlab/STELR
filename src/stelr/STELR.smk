@@ -47,11 +47,13 @@ rule sort_index_bam:
     output:
         "reads_sort.bam"
     threads: config["thread"]
-        #samtools
     conda:
         config["conda"]["stable_environment"]
     shell:
-        "python3 {config[STELR_alignment]} sort_index_bam '{input}' '{output}' '{threads}'"
+        """
+        samtools sort -@ {threads} -o {output} {input}
+        samtools index -@ {threads} {output}
+        """
     
 rule align_with_ngmlr:#TODO: add timers to these alignments
     priority: 10
