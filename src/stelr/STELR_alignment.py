@@ -47,30 +47,7 @@ def string_list(list1):
     elif len(list1) == 2:
         return " or ".join(list1)
     else:
-        return ", ".join(list1[:-1]) + ", or " + list1[-1] 
-
-
-def sort_index_bam(unsorted_bam, sorted_bam, thread):
-    """
-    Sort and index bam file
-    """
-    logging.info("Sort and index BAM...")
-    start_time = time.perf_counter()
-    try:
-        print(["samtools", "sort", "-@", str(thread), "-o", sorted_bam, unsorted_bam])
-        subprocess.call(["samtools", "sort", "-@", str(thread), "-o", sorted_bam, unsorted_bam])
-        subprocess.call(["samtools", "index", "-@", str(thread), sorted_bam])
-    except Exception as e:
-        print(e)
-        print("Sort and index BAM file failed, exiting...")
-        sys.exit(1)
-    if os.path.isfile(sorted_bam) is False:
-        sys.stderr.write("Sorted and indexed BAM file does not exist, exiting...\n")
-        sys.exit(1)
-    os.remove(unsorted_bam)
-
-    proc_time = time.perf_counter() - start_time
-    logging.info(f"Bam sorted and indexed in {format_time(proc_time)}")
+        return ", ".join(list1[:-1]) + ", or " + list1[-1]
 
 def bam2fasta(bam, fasta):
     """
