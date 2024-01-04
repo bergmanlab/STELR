@@ -391,30 +391,65 @@ rule sort_ref_rm:
 Write Output
 '''
 
-
 def all_contigs_output(wildcards):
     checkpoints.initialize_contig_dirs.get(**wildcards)
     contig_list = [x.split("/")[1] for x in glob.glob("contigs/*/config.json")]
     return [f"contigs/{contig}/.complete" for contig in contig_list]
-rule final_output:
-    input:
-        reference = config["reference"],
-        reference_index = lambda wildcards: f"{config['reference']}.fai",
-        finished_all_contigs = all_contigs_output
-    output:
-        contig_fa_outfile = "reads.stelr.contig.fasta",
-        te_fa_outfile = "reads.stelr.te.fasta",
-        bed_outfile = "reads.stelr.bed",
-        json_outfile = "reads.stelr.json",
-        expanded_json_outfile = "reads.stelr.expanded.json",
-        vcf_outfile = "reads.stelr.vcf"
-    params:
-        output_pattern = "18_output.json"
-    conda:
-        config["conda"]["stable_environment"]
+rule compile_contig_info:
+    input: all_contigs_output
+    output: "all_tes.json"
+    threads: config["thread"]
     shell:
-        "python3 {config[STELR_output]} write_output {output} {input.reference} {input.reference_index} {params}"
+        """
+        python3 {config[STELR_output]} compile_te_data {output} {threads}
+        """
+rule contig_fasta_output:
+    input: "all_tes.json"
+    output: "reads.stelr.contig.fasta"
+    threads: config["thread"]
+    params: 
+        contig_pattern = "03_contig1.fa"
+    shell:
+        """
+        python3 {config[STELR_output]} write_contig_fasta_output {input} {output} {threads} {params.contig_pattern}
+        """
+rule te_fasta_output:
+    input: "all_tes.json"
+    output: "reads.stelr.te.fasta"
+    shell:
+        """
+        python3 {config[STELR_output]} write_te_fasta_output {input} {output}
+        """
+rule bed_output:
+    input: "all_tes.json"
+    output: "reads.stelr.bed"
+    shell:
+        """
+        python3 {config[STELR_output]} write_bed_output {input} {output}
+        """
+rule json_output:
+    input: "all_tes.json"
+    output: 
+        expanded_json = "reads.stelr.expanded.json",
+        basic_json = "reads.stelr.json"
+    shell:
+        """
+        python3 {config[STELR_output]} write_json_outputs {input} {output}
+        """
+rule vcf_output:
+    input: 
+        stelr_json = "reads.stelr.json",
+        reference = config["reference"],
+        reference_index = lambda wildcards: f"{config['reference']}.fai"
+    output: "reads.stelr.vcf"
+    shell:
+        """
+        python3 {config[STELR_output]} write_vcf_output {input} {output}
+        """
 
+'''
+Util Rules
+'''
 
 rule minimap2bed:
     input:

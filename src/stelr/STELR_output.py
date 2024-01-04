@@ -8,60 +8,7 @@ from datetime import date
 import subprocess
 import glob
 from STELR_utility import check_exist, abs_path
-
-def write_vcf(input, ref, ref_index, out_vcf):
-    ref_info = get_contig_info(ref_index)
-    df = pd.DataFrame(input)
-    if not df.empty:
-        df["ID"] = df.index
-        df["start"] = df["start"] + 1
-        df["REF"] = "N"
-        df["QUAL"] = "."
-        df["FILTER"] = "PASS"
-        df["FORMAT"] = "GT:DR:DV"
-        df["gt"] = df["genotype"] + ":" + df["num_sv_reads"] + ":" + df["num_ref_reads"]
-        df["INFO"] = df.apply(
-            lambda x: f"SVTYPE=INS;END={x.end};FAMILY={x.family};STRANDS={x.strand};SUPPORT_TYPE={x.support};RE={x.num_sv_reads};AF={x.allele_frequency};TSD_LEN={x.tsd_length};TSD_SEQ={x.tsd_sequence}",
-            axis=1,
-        )
-
-        df = df[
-            [
-                "chrom",
-                "start",
-                "ID",
-                "REF",
-                "te_sequence",
-                "QUAL",
-                "FILTER",
-                "INFO",
-                "FORMAT",
-                "gt",
-            ]
-        ]
-        df = df.fillna("NA")
-    with open(out_vcf, "w") as vcf:
-        vcf.write("##fileformat=VCFv4.1\n")
-        vcf.write("##fileDate={}".format(date.today()) + "\n")
-        vcf.write("##source=STELR\n")
-        vcf.write(f"##reference={ref}\n")
-        vcf.write("\n".join(ref_info) + "\n")
-        vcf.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the structure variant">\n')
-        vcf.write('##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structure variant">\n')
-        vcf.write('##INFO=<ID=STRANDS,Number=A,Type=String,Description="Strand orientation">\n')
-        vcf.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
-        vcf.write('##INFO=<ID=FAMILY,Number=1,Type=String,Description="TE family">\n')
-        vcf.write('##INFO=<ID=RE,Number=1,Type=Integer,Description="read support">\n')
-        vcf.write('##INFO=<ID=SUPPORT_TYPE,Number=1,Type=String,Description="single_side or both_sides">\n')
-        vcf.write('##INFO=<ID=TSD_LEN,Number=1,Type=String,Description="Length of the TSD sequence if available">\n')
-        vcf.write('##INFO=<ID=TSD_SEQ,Number=1,Type=String,Description="TSD sequence if available">\n')
-        vcf.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
-        vcf.write('##FORMAT=<ID=DR,Number=1,Type=Integer,Description="# high-quality reference reads">\n')
-        vcf.write('##FORMAT=<ID=DV,Number=1,Type=Integer,Description="# high-quality variant reads">\n')
-        vcf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n")
-        
-    if not df.empty:
-        df.to_csv(out_vcf, sep="\t", mode="a", index=False, header=False)
+from multiprocessing import Pool
 
 
 def get_contig_info(reference_index):
@@ -144,24 +91,171 @@ def make_json_output(liftover_file, af_file, vcf_parsed_file, annotation_file, c
     
     if full_report["5p_flank_align_coord"] and full_report["3p_flank_align_coord"]:
         full_report["support"] = "both_sides"
-    
-    basic_report = ["type","ID","chrom","start","end","family","strand","support","tsd_length","tsd_sequence","te_sequence","genotype","num_sv_reads","num_ref_reads","allele_frequency"]
-    basic_report = {key:full_report[key] for key in basic_report}
-
-    output_information = {
-        "expanded_json":full_report,
-        "json":basic_report,
-        "contig_path":abs_path(contig_file),
-        "te_fasta":f">{full_report['ID']}\n{full_report['te_sequence']}\n",
-        "contig_name":contig_name,
-        "bed_out":f"{full_report['chrom']}\t{full_report['start']}\t{full_report['end']}\t{full_report['family']}\t.\t{full_report['strand']}\n"
-    }
 
     with open(json_output, "w") as output:
-        json.dump(output_information, output)
+        json.dump(full_report, output)
+
+
+def get_te_data(contig):
+    #basic_report_keys = ["type","ID","chrom","start","end","family","strand","support","tsd_length","tsd_sequence","te_sequence","genotype","num_sv_reads","num_ref_reads","allele_frequency"]
+    try:
+        tes = next(os.walk(f"contigs/{contig}/tes"))[1]
+        te_data = []
+        contig_path = ""
+        for te in tes:
+            try:
+                with open(f"contigs/{contig}/tes/{te}/18_output.json","r") as data:
+                    te_dict = json.load(data)
+                    #te_dict = {
+                    #    "expanded_json":te_info,
+                    #    "json":{key:te_info[key] for key in basic_report_keys},
+                    #    "te_fasta":f">{te_info['ID']}\n{te_info['te_sequence']}\n",
+                    #    "bed_out":f"{te_info['chrom']}\t{te_info['start']}\t{te_info['end']}\t{te_info['family']}\t.\t{te_info['strand']}\n"
+                    #}
+                    te_data.append(te_dict)
+            except:pass
+        if len(te_data) == 0: return []
+        return [contig,te_data]
+    except: return []
+
+'''
+python3 $STELR_output compile_te_data all_tes.json 10
+'''
+def compile_te_data(outfile, threads=1):
+    threads = int(threads)
+    contigs = next(os.walk("contigs"))[1]
+    with Pool(threads) as p:
+        compiled_data = [item for item in p.map(get_te_data,contigs) if item]
+        compiled_data.sort()
+    with open(outfile,"w") as out:
+        json.dump(compiled_data,out)
+
+'''
+time python3 $STELR_output write_contig_fasta_output all_tes.json reads.stelr.contig.fasta 10
+'''
+def return_content(file):
+    with open(file,"r") as input_file:
+        return [file,input_file.read()]
+def write_contig_fasta_output(all_tes,out_fasta,threads=1,contig_pattern="03_contig1.fa"):
+    threads = int(threads)
+
+    with open(all_tes,"r") as data:
+        te_data = json.load(data)
     
-def write_output(contig_fa_outfile, te_fa_outfile, bed_outfile, json_outfile, expanded_json_outfile, vcf_outfile, reference, reference_index, output_pattern):
-    contigs = {}
+    contig_fastas = [f"contigs/{contig[0]}/{contig_pattern}" for contig in te_data]
+
+    with Pool(threads) as p:
+        contig_fastas = p.map(return_content,contig_fastas)
+        contig_fastas.sort()
+
+    with open(out_fasta,"w") as output:
+        output.write("".join([item[1] for item in contig_fastas]))
+
+'''
+time python3 $STELR_output write_te_fasta_output all_tes.json reads.stelr.te.fasta
+'''
+def write_te_fasta_output(all_tes,out_fasta):
+    with open(all_tes,"r") as data:
+        te_data = json.load(data)
+    
+    te_fastas = "\n".join(["\n".join([f">{te_info['ID']}\n{te_info['te_sequence']}" for te_info in te_list[1]]) for te_list in te_data])
+
+    with open(out_fasta,"w") as output:
+        output.write(te_fastas)
+
+def write_bed_output(all_tes,out_bed):
+    with open(all_tes,"r") as data:
+        te_data = json.load(data)
+    
+    te_beds = "\n".join(["\n".join([f"{te_info['chrom']}\t{te_info['start']}\t{te_info['end']}\t{te_info['family']}\t.\t{te_info['strand']}" for te_info in te_list[1]]) for te_list in te_data])
+    
+    with open(out_bed,"w") as output:
+        output.write(te_beds)
+
+def write_json_outputs(all_tes,expanded_json_file,basic_json_file):
+    with open(all_tes,"r") as data:
+        te_data = json.load(data)
+    
+    expanded_json = [te_dict for te_list in te_data for te_dict in [te_dict for te_dict in te_list[1]]]
+
+    with open(expanded_json_file,"w") as output:
+        json.dump(expanded_json,output)
+
+    basic_report_keys = ["type","ID","chrom","start","end","family","strand","support","tsd_length","tsd_sequence","te_sequence","genotype","num_sv_reads","num_ref_reads","allele_frequency"]
+
+    basic_json = [{key:report[key] for key in basic_report_keys} for report in expanded_json]
+    
+    with open(basic_json_file,"w") as output:
+        json.dump(basic_json,output)
+
+'''
+time python3 $STELR_output write_vcf_output reads.stelr.json input/reference.fasta input/reference.fasta.fai reads.stelr.vcf
+'''
+def write_vcf_output(basic_json, ref, ref_index, out_vcf):
+    with open(basic_json,"r") as data:
+        data = json.load(data)
+
+    ref_info = get_contig_info(ref_index)
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df["ID"] = df.index
+        df["start"] = df["start"] + 1
+        df["REF"] = "N"
+        df["QUAL"] = "."
+        df["FILTER"] = "PASS"
+        df["FORMAT"] = "GT:DR:DV"
+        df["gt"] = df["genotype"] + ":" + df["num_sv_reads"] + ":" + df["num_ref_reads"]
+        df["INFO"] = df.apply(
+            lambda x: f"SVTYPE=INS;END={x.end};FAMILY={x.family};STRANDS={x.strand};SUPPORT_TYPE={x.support};RE={x.num_sv_reads};AF={x.allele_frequency};TSD_LEN={x.tsd_length};TSD_SEQ={x.tsd_sequence}",
+            axis=1,
+        )
+
+        df = df[
+            [
+                "chrom",
+                "start",
+                "ID",
+                "REF",
+                "te_sequence",
+                "QUAL",
+                "FILTER",
+                "INFO",
+                "FORMAT",
+                "gt",
+            ]
+        ]
+        df = df.fillna("NA")
+    with open(out_vcf, "w") as vcf:
+        vcf.write("##fileformat=VCFv4.1\n")
+        vcf.write("##fileDate={}".format(date.today()) + "\n")
+        vcf.write("##source=STELR\n")
+        vcf.write(f"##reference={ref}\n")
+        vcf.write("\n".join(ref_info) + "\n")
+        vcf.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the structure variant">\n')
+        vcf.write('##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structure variant">\n')
+        vcf.write('##INFO=<ID=STRANDS,Number=A,Type=String,Description="Strand orientation">\n')
+        vcf.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+        vcf.write('##INFO=<ID=FAMILY,Number=1,Type=String,Description="TE family">\n')
+        vcf.write('##INFO=<ID=RE,Number=1,Type=Integer,Description="read support">\n')
+        vcf.write('##INFO=<ID=SUPPORT_TYPE,Number=1,Type=String,Description="single_side or both_sides">\n')
+        vcf.write('##INFO=<ID=TSD_LEN,Number=1,Type=String,Description="Length of the TSD sequence if available">\n')
+        vcf.write('##INFO=<ID=TSD_SEQ,Number=1,Type=String,Description="TSD sequence if available">\n')
+        vcf.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
+        vcf.write('##FORMAT=<ID=DR,Number=1,Type=Integer,Description="# high-quality reference reads">\n')
+        vcf.write('##FORMAT=<ID=DV,Number=1,Type=Integer,Description="# high-quality variant reads">\n')
+        vcf.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n")
+        
+    if not df.empty:
+        df.to_csv(out_vcf, sep="\t", mode="a", index=False, header=False)
+
+
+def write_output(contig_fa_outfile, te_fa_outfile, bed_outfile, json_outfile, expanded_json_outfile, vcf_outfile, reference, reference_index, output_pattern, threads=1):
+    threads = int(threads)
+    contigs = next(os.walk("contigs"))[1]
+    with Pool(threads) as p:
+        out = [item for item in p.map(get_te_data,contigs) if item]
+        print(out)
+    quit()
     json_files = [file for file in glob.glob(f"contigs/*/tes/*/{output_pattern}") if check_exist(file)]
     for file in json_files:
         try:
