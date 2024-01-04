@@ -69,7 +69,7 @@ def setup_run(if_verbose, config):
 
     config["output"] = {
         "default":{
-            f"{config['sample_name']}.stelr.contig.fasta":  "reads.stelr.te.fasta",
+            f"{config['sample_name']}.stelr.contig.fasta":  "reads.stelr.contig.fasta",
             f"{config['sample_name']}.stelr.te.fasta":      "reads.stelr.te.fasta",
             f"{config['sample_name']}.stelr.bed":           "reads.stelr.bed",
             f"{config['sample_name']}.stelr.json":          "reads.stelr.json",
