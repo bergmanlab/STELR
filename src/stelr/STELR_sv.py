@@ -152,35 +152,6 @@ def rm_vcf_redundancy(vcf_in, vcf_out):
     )
     df2.to_csv(vcf_out, sep="\t", header=False, index=False)
 
-def repeatmask(repeatmasker_dir, ins_seqs, te_library, thread):
-    mkdir(repeatmasker_dir)
-    try:
-        subprocess.call(
-            [
-                "RepeatMasker",
-                "-dir",
-                repeatmasker_dir,
-                "-gff",
-                "-s",
-                "-nolow",
-                "-no_is",
-                "-xsmall",
-                "-e",
-                "ncbi",
-                "-lib",
-                te_library,
-                "-pa",
-                str(thread),
-                ins_seqs,
-            ]
-        )
-        ins_repeatmasked = f"{repeatmasker_dir}/{os.path.basename(ins_seqs)}.out.gff"
-        open(ins_repeatmasked, "r")
-    except Exception as e:
-        print(e)
-        print("Repeatmasking VCF insertion sequences failed, exiting...")
-        sys.exit(1)
-
 def te_extract(parsed_vcf, ins_seqs, ins_rm_merge, ins_filtered, loci_eval):
     # get the length of the insertion sequence TODO: this can be generalized
     contig_len = dict()
