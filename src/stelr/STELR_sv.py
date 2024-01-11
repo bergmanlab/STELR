@@ -174,6 +174,7 @@ def te_extract(parsed_vcf, ins_seqs, ins_rm_merge, ins_filtered, loci_eval):
             else:
                 ins_te_loci[contig_name] = ins_te_prop
 
+    filtered_out = set()
     with open(parsed_vcf, "r") as input, open(ins_filtered, "w") as output:
         for line in input:
             entry = line.replace("\n", "").split("\t")
@@ -182,11 +183,10 @@ def te_extract(parsed_vcf, ins_seqs, ins_rm_merge, ins_filtered, loci_eval):
             if contig_name in ins_te_loci:
                 out_line = line.replace('\n', '') + f"\t{ins_te_loci[contig_name]}"
                 output.write(f"{out_line}\n")
+            else: filtered_out.add(contig_name)
                 
     with open(loci_eval, "a") as output:
-        for locus in create_loci_set(parsed_vcf):
-            if locus not in ins_te_loci:
-                output.write("\t".join([locus, "VCF sequence not repeatmasked"]) + "\n")
+        output.write("\tVCF sequence not repeatmasked\n".join(filtered_out + "\tVCF sequence not repeatmasked"))
 
 def write_ins_seqs(parsed_vcf, out):
     with open(parsed_vcf, "r") as input, open(out, "w") as output:
