@@ -203,6 +203,7 @@ def get_locus_info(locus):
         "start":locus[1],
         "end":locus[2],
         "progress information":["Insertion detected by SV caller"],
+        "# supporting reads":0,
         "supporting reads":locus[8].split(","),
         "contig assembled?":False,
         "assembled contig length":None,
