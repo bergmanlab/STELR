@@ -439,9 +439,10 @@ rule contig_json_output:
         parsed_SVs = "reads.vcf_parsed.tsv",
         checkpoint = "all_tes.json"
     output: "reads.stelr.loci.json"
+    threads: config["thread"]
     shell:
         """
-        python3 {config[STELR_output]} write_contig_json {input.parsed_SVs} {output}
+        python3 {config[STELR_output]} write_contig_json {input.parsed_SVs} {output} {threads}
         """
 rule vcf_output:
     input: 

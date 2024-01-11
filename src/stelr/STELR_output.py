@@ -131,7 +131,7 @@ def compile_te_data(outfile, threads=1):
         json.dump(compiled_data,out)
 
 '''
-time python3 $STELR_output write_contig_fasta_output all_tes.json reads.stelr.contig.fasta 10
+time python3 $STELR_output write_contig_fasta_output all_tes.json reads.stelr.loci.fasta 10
 '''
 def return_content(file):
     with open(file,"r") as input_file:
@@ -205,6 +205,7 @@ def get_locus_info(locus):
         "progress information":["Insertion detected by SV caller"],
         "supporting reads":locus[8].split(","),
         "contig assembled?":False,
+        "assembled contig length":None,
         "TEs":[]
     }
     info["# supporting reads"] = len(info["supporting reads"])
@@ -218,6 +219,8 @@ def get_locus_info(locus):
     if check_exist(f"contigs/{contig_id}/03_contig1.fa"):
         info["progress information"].append("Contig assembled successfully")
         info["contig assembled?"] = True
+        with open(f"contigs/{contig_id}/03_contig1.fa","r") as contig_fa:
+            info["assembled contig length"] = int(contig_fa.readline().strip().split("len=")[1])
     else: 
         info["progress information"].append("Failed to assemble contig")
         return info
@@ -241,7 +244,7 @@ def get_locus_info(locus):
         
 
 '''
-time python3 $STELR_output write_contig_json reads.vcf_parsed.tsv reads.stelr.contig.json 10
+time python3 $STELR_output write_contig_json reads.vcf_parsed.tsv reads.stelr.loci.json 10
 '''
 def write_contig_json(parsed_svs, output_file, threads=1):
     threads = int(threads)
