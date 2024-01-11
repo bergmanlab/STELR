@@ -446,7 +446,7 @@ rule contig_json_output:
         """
 rule vcf_output:
     input: 
-        stelr_json = "reads.stelr.json",
+        stelr_json = "reads.stelr.te.json",
         reference = config["reference"],
         reference_index = lambda wildcards: f"{config['reference']}.fai"
     output: "reads.stelr.vcf"
