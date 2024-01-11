@@ -69,11 +69,11 @@ def setup_run(if_verbose, config):
 
     config["output"] = {
         "default":{
-            f"{config['sample_name']}.stelr.contig.fasta":  "reads.stelr.contig.fasta",
+            f"{config['sample_name']}.stelr.loci.fasta":  "reads.stelr.loci.fasta",
             f"{config['sample_name']}.stelr.te.fasta":      "reads.stelr.te.fasta",
             f"{config['sample_name']}.stelr.bed":           "reads.stelr.bed",
-            f"{config['sample_name']}.stelr.json":          "reads.stelr.json",
-            f"{config['sample_name']}.stelr.expanded.json": "reads.stelr.expanded.json",
+            f"{config['sample_name']}.stelr.te.json":       "reads.stelr.te.json",
+            f"{config['sample_name']}.stelr.loci.json":   "reads.stelr.loci.json",
             f"{config['sample_name']}.stelr.vcf":           "reads.stelr.vcf"
         },
         "make_annotation":{

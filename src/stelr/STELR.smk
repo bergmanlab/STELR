@@ -405,7 +405,7 @@ rule compile_contig_info:
         """
 rule contig_fasta_output:
     input: "all_tes.json"
-    output: "reads.stelr.contig.fasta"
+    output: "reads.stelr.loci.fasta"
     threads: config["thread"]
     params: 
         contig_pattern = "03_contig1.fa"
@@ -427,14 +427,21 @@ rule bed_output:
         """
         python3 {config[STELR_output]} write_bed_output {input} {output}
         """
-rule json_output:
+rule te_json_output:
     input: "all_tes.json"
-    output: 
-        expanded_json = "reads.stelr.expanded.json",
-        basic_json = "reads.stelr.json"
+    output: "reads.stelr.te.json"
     shell:
         """
-        python3 {config[STELR_output]} write_json_outputs {input} {output}
+        python3 {config[STELR_output]} write_te_json {input} {output}
+        """
+rule contig_json_output:
+    input: 
+        parsed_SVs = "reads.vcf_parsed.tsv",
+        checkpoint = "all_tes.json"
+    output: "reads.stelr.loci.json"
+    shell:
+        """
+        python3 {config[STELR_output]} write_contig_json {input.parsed_SVs} {output}
         """
 rule vcf_output:
     input: 

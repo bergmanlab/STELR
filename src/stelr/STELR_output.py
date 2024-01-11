@@ -172,21 +172,96 @@ def write_bed_output(all_tes,out_bed):
     with open(out_bed,"w") as output:
         output.write(te_beds)
 
-def write_json_outputs(all_tes,expanded_json_file,basic_json_file):
+'''
+time python3 $STELR_output write_te_json all_tes.json reads.stelr.te.json
+'''
+def write_te_json(all_tes,output_file):
     with open(all_tes,"r") as data:
         te_data = json.load(data)
     
     expanded_json = [te_dict for te_list in te_data for te_dict in [te_dict for te_dict in te_list[1]]]
 
-    with open(expanded_json_file,"w") as output:
-        json.dump(expanded_json,output)
+    with open(output_file,"w") as output:
+        json.dump(expanded_json,output,indent=4)
 
-    basic_report_keys = ["type","ID","chrom","start","end","family","strand","support","tsd_length","tsd_sequence","te_sequence","genotype","num_sv_reads","num_ref_reads","allele_frequency"]
-
-    basic_json = [{key:report[key] for key in basic_report_keys} for report in expanded_json]
     
-    with open(basic_json_file,"w") as output:
-        json.dump(basic_json,output)
+    #basic_report_keys = ["type","ID","chrom","start","end","family","strand","support","tsd_length","tsd_sequence","te_sequence","genotype","num_sv_reads","num_ref_reads","allele_frequency"]
+
+    #basic_json = [{key:report[key] for key in basic_report_keys} for report in expanded_json]
+    
+    #with open(basic_json_file,"w") as output:
+    #    json.dump(basic_json,output)
+
+
+def get_locus_info(locus):
+    locus = locus.split("\t")
+    contig_id = "_".join(locus[:3])
+    locus[1], locus[2] = int(locus[1]), int(locus[2])
+    info = {
+        "ID":contig_id,
+        "chrom":locus[0],
+        "start":locus[1],
+        "end":locus[2],
+        "progress information":["Insertion detected by SV caller"],
+        "supporting reads":locus[8].split(","),
+        "contig assembled?":False,
+        "TEs":[]
+    }
+    info["# supporting reads"] = len(info["supporting reads"])
+
+    if os.path.isdir(f"contigs/{contig_id}"):
+        info["progress information"].append("Passed initial TE candidate filtration")
+    else: 
+        info["progress information"].append("Filtered out at initial TE candidate filtration")
+        return info
+    
+    if check_exist(f"contigs/{contig_id}/03_contig1.fa"):
+        info["progress information"].append("Contig assembled successfully")
+        info["contig assembled?"] = True
+    else: 
+        info["progress information"].append("Failed to assemble contig")
+        return info
+    
+    tes = glob.glob(f"contigs/{contig_id}/tes/*/18_output.json")
+    for te in tes:
+        try:
+            with open(te,"r") as input_file:
+                info["TEs"].append(input_file.read().split('"ID":')[1].split('"')[1])
+        except: pass
+    
+    num_tes = len(info["TEs"])
+    if num_tes > 1:
+        info["progress information"].append(f"{num_tes} TEs identified at this locus")
+    if num_tes == 1:
+        info["progress information"].append(f"{num_tes} TE identified at this locus")
+    else: 
+        info["progress information"].append("No TEs identified at this locus")
+    
+    return info
+        
+
+'''
+time python3 $STELR_output write_contig_json reads.vcf_parsed.tsv reads.stelr.contig.json 10
+'''
+def write_contig_json(parsed_svs, output_file, threads=1):
+    threads = int(threads)
+    with open(parsed_svs,"r") as input_file:
+        parsed_svs_list = input_file.read().strip().split("\n")
+    
+    with Pool(threads) as p:
+        contig_info = p.map(get_locus_info,parsed_svs_list)
+        contig_info.sort(key=lambda x:x["ID"])
+    
+    categorized_contig_info = {
+        "no TE predicted":[c for c in contig_info if "Filtered out at initial TE candidate filtration" in c["progress information"]],
+        "TE predicted but local assembly failed":[c for c in contig_info if "Failed to assemble contig" in c["progress information"]],
+        "contig assembled, no TE found":[c for c in contig_info if c["contig assembled?"] and not c["TEs"]],
+        "TE predicted at locus":[c for c in contig_info if c["TEs"]]
+    }
+    
+    with open(output_file,"w") as output:
+        json.dump(categorized_contig_info,output,indent=4)
+
 
 '''
 time python3 $STELR_output write_vcf_output reads.stelr.json input/reference.fasta input/reference.fasta.fai reads.stelr.vcf
