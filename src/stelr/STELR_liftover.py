@@ -4,7 +4,7 @@ import json
 import subprocess
 import shutil
 from multiprocessing import Pool
-from STELR_utility import string_to_bool, get_subseq, check_exist
+from STELR_utility import string_to_bool, get_subseq, check_exist, prefix
 
 def flank_bed(ref, ref_size, te_json, flank_len, output_file):
     """
@@ -38,22 +38,14 @@ def paf_to_bed(paf, bed, contig_name, different_contig_name):
     if "3p" in os.path.basename(paf): different_contig_name = True
     else: different_contig_name = string_to_bool(different_contig_name)
     if different_contig_name:
-        filter = "_".join(contig_name.split("_")[:-2])
+        filter = prefix(contig_name, "_", -2)
     else:
         filter = None
     with open(paf, "r") as input, open(bed, "w") as output:
         for line in input:
             entry = line.replace("\n", "").split("\t")
             chrom = entry[5]
-            if filter is None:
-                start = entry[7]
-                end = entry[8]
-                name = entry[0]
-                score = entry[11]
-                strand = entry[4]
-                out_line = "\t".join([chrom, start, end, name, score, strand])
-                output.write(out_line + "\n")
-            elif chrom == filter:
+            if filter is None or chrom == filter:
                 start = entry[7]
                 end = entry[8]
                 name = entry[0]
@@ -174,7 +166,7 @@ def make_json(bed_input, json_output):
             #"preset": preset,
             # "single_flank": single_flank,
             #"different_contig_name": different_contig_name,
-            #"telr_mode": telr_mode,
+            #"stelr_mode": stelr_mode,
         }
         json.dump(annotation, output)
 
@@ -357,14 +349,13 @@ def choose_report(out_file, *input_files):
             for file_type in ["bed", "info"]:
                 if file_type in os.path.basename(file):      
                     flanks[flank][f"{file_type}_file"] = file
+        elif ".te.bed" in file:
+            ref_bed = file
         elif check_exist(file):
-            if ".te.bed" in file:
-                ref_bed = file
-            else: 
-                with open(file, "r") as input:
-                    if os.path.basename(file) == "00_annotation.json": 
-                        te_dict = json.load(input)
-                    else: reports.append(json.load(input))
+            with open(file, "r") as input:
+                if os.path.basename(file) == "00_annotation.json": 
+                    te_dict = json.load(input)
+                else: reports.append(json.load(input))
     strand = te_dict["strand"]
     best_report = {}
     reported = True

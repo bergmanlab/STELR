@@ -18,8 +18,8 @@ from STELR_utility import (
     get_contig_length,
     read_vcf
 )
-#from telr.TELR_liftover import liftover
-#from telr.TELR_assembly import prep_assembly_inputs
+#from stelr.STELR_liftover import liftover
+#from stelr.STELR_assembly import prep_assembly_inputs
 
 def get_vcf_seq(contig, vcf_parsed, sequence_file):
     sequence = read_vcf(vcf_parsed, contig, column=7, single_contig=True)
@@ -345,7 +345,7 @@ def find_te(
         keep_files=keep_files,
         # single_flank=single_flank,
         different_contig_name=different_contig_name,
-        telr_mode=True,
+        stelr_mode=True,
     )
 
     return json_report

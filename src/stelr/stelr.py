@@ -10,45 +10,51 @@ import logging
 import json
 from shutil import rmtree
 from time import perf_counter
+from STELR_utility import symlink
 
 def main():
     config = get_args()
     if config["resume"]:
         resume_params = config
-        with open(f"{config['out']}/telr_run_{config['resume']}/config.json","r") as config_from_file:
+        with open(f"{config['out']}/stelr_run_{config['resume']}/config.json","r") as config_from_file:
             config = json.load(config_from_file)
         resume_params.pop("out")
         config.update(resume_params)
     else:
         config["verbose"] = False #TODO: add as option later
         if_verbose = verbose(config["verbose"])
-        config["sample_name"] = os.path.splitext(os.path.basename(config["reads"]))[0]
+        try: config["sample_name"] = os.path.splitext(os.path.basename(config["reads"]))[0]
+        except: config["sample_name"] = "sample"
     
         config.update(handle_file_paths(config))
         config.update(setup_run(if_verbose, config))
     run_workflow(config)
 
 def handle_file_paths(config):
-    telr_src = os.path.abspath(__file__)
-    telr_dir = os.path.split(telr_src)[0]
+    stelr_src = os.path.abspath(__file__)
+    stelr_dir = os.path.split(stelr_src)[0]
     
     source_files = ["alignment","assembly","sv","te","liftover","utility","output"]
     for file in source_files:
-        config[f"STELR_{file}"] = f"{telr_dir}/STELR_{file}.py"
-    config["smk"] = f"{telr_dir}/STELR.smk"
-    config["STELR_contig"] = f"{telr_dir}/STELR_contig.smk"
-    config["fix_ngmlr"] = f"{telr_dir}/fix_ngmlr.py"
-    env_dir = telr_dir.split("src")[0] + "envs"
-    config["envs"] = {}
-
-
+        config[f"STELR_{file}"] = f"{stelr_dir}/STELR_{file}.py"
+    config["smk"] = f"{stelr_dir}/STELR.smk"
+    config["STELR_contig"] = f"{stelr_dir}/STELR_contig.smk"
+    config["fix_ngmlr"] = f"{stelr_dir}/fix_ngmlr.py"
+    env_dir = stelr_dir.split("src")[0] + "envs"
+    config["envs"] = f"{env_dir}/snakemake"
+    with open(f"{env_dir}/stelr_environments.json") as input:
+        env_files = json.load(input)
+        config["conda"] = {key:f"{config['envs']}/{key}.yaml" for key in env_files}
+        print(config["conda"])
     return config
 
 def setup_run(if_verbose, config):
     run_id = random.randint(1000000,9999999) #generate a random run ID
-    tmp_dir = f"{config['out']}/telr_run_{run_id}"
+    tmp_dir = f"{config['out']}/stelr_run_{run_id}"
     mkdir(if_verbose, tmp_dir)
     mkdir(if_verbose, os.path.join(tmp_dir, "input"))
+
+    reference_name = os.path.basename(config['reference'])
 
     config.update(process_input_files(
         {"reads":config["reads"],
@@ -58,28 +64,48 @@ def setup_run(if_verbose, config):
         config["sample_name"])
     )
 
-    config["output"] = [
-        f"reads.telr.contig.fasta",
-        f"reads.telr.te.fasta",
-        f"reads.telr.bed",
-        f"reads.telr.json",
-        f"reads.telr.expanded.json",
-        f"reads.telr.vcf"
-    ]
+    if config["make_annotation"]: output_type = "make_annotation"
+    else: output_type = "default"
+
+    config["output"] = {
+        "default":{
+            f"{config['sample_name']}.stelr.loci.fasta":  "reads.stelr.loci.fasta",
+            f"{config['sample_name']}.stelr.te.fasta":      "reads.stelr.te.fasta",
+            f"{config['sample_name']}.stelr.bed":           "reads.stelr.bed",
+            f"{config['sample_name']}.stelr.te.json":       "reads.stelr.te.json",
+            f"{config['sample_name']}.stelr.loci.json":   "reads.stelr.loci.json",
+            f"{config['sample_name']}.stelr.vcf":           "reads.stelr.vcf"
+        },
+        "make_annotation":{
+            f"{reference_name}.te.bed":                     "ref_repeatmask/reference.fasta.te.bed"
+        }
+    }[output_type]
+
+    if type(config["output"]) is dict:
+        config["final_output"] = {key:f'{tmp_dir}/{config["output"][key]}' for key in config["output"]}
+        config["output"] = [config["output"][key] for key in config["output"]]
+    else:
+        config["final_output"] = {key:f"{tmp_dir}/{key}" for key in config["output"]}
 
     config["run_id"] = run_id
     config["tmp_dir"] = tmp_dir
     config["config_path"] = f"{tmp_dir}/config.json" # path to config file
     with open(config["config_path"], "w") as conf:
-        json.dump(config, conf, indent=4) #write config file as json    
+        json.dump(config, conf, indent=4) #write config file as json
+    
+    if config["annotation"]:
+        rm_dir = f"{tmp_dir}/ref_repeatmask"
+        mkdir(if_verbose, rm_dir)
+        symlink(config["annotation"],f"{rm_dir}/reference.fasta.te.bed")
     
     return config
 
 def run_workflow(config):
-    print(f"TELR version {__version__}")
+    print(f"STELR version {__version__}")
     print(f"Run ID {config['run_id']}")
     command = [
-        "snakemake", #"--use-conda",#"--conda-prefix",config["conda_yaml"],
+        "snakemake", 
+        "--use-conda","--conda-prefix",config["envs"],
         "-s",config["smk"],
         "--configfile", config["config_path"],
         "--cores", str(config["thread"]),# "--quiet"
@@ -92,16 +118,16 @@ def run_workflow(config):
         else:
             subprocess.run(command + ["--unlock"], cwd=config["tmp_dir"])
             subprocess.run(command + ["--rerun-incomplete"] + ["--rerun-triggers","mtime"], cwd=config["tmp_dir"])
-        for output_file in config["output"]:
-            os.rename(f"{config['tmp_dir']}/{output_file}",f"{config['out']}/{output_file.replace('reads',config['sample_name'])}")
+        for output_file in config["final_output"]:#TODO
+            os.rename(config["final_output"][output_file],output_file)
         if not config["keep_files"]:
             rmtree(config['tmp_dir'])
     except Exception as e:
         print(e)
-        print("TELR failed!")
+        print("STELR failed!")
         sys.exit(1)
-    if config["resume"] is None: print(f"TELR finished in {perf_counter()-start} seconds!")
-    print(f"TELR run {config['run_id']} finished.")
+    if config["resume"] is None: print(f"STELR finished in {perf_counter()-start} seconds!")
+    print(f"STELR run {config['run_id']} finished.")
 
 def process_input_files(input_file_paths, input_dir, sample_name):
     def file_extension_of(file):
@@ -112,7 +138,8 @@ def process_input_files(input_file_paths, input_dir, sample_name):
         "reference":[".fasta",".fastq",".fa",".fq",".fna",".fa"]
         }
     new_paths = {}
-    for file in ["reads","reference","library"]:
+    input_file_types = [file for file in ["reads","reference","library"] if input_file_paths[file]]
+    for file in input_file_types:
         try: open(input_file_paths[file], "r")
         except Exception as e:
             print(e)
@@ -125,21 +152,11 @@ def process_input_files(input_file_paths, input_dir, sample_name):
         else: 
             new_paths[file] = f"{input_dir}/{file}{file_extension_of(file)}"
             symlink(input_file_paths[file], new_paths[file])
+    for file in [file for file in ["reads","reference","library"] if not input_file_paths[file]]:
+        new_paths[file] = f"{file}.f"
     if ".bam" in new_paths["reads"]: new_paths["fasta_reads"] = f"{input_dir}/reads.fasta"
     else: new_paths["fasta_reads"] = new_paths["reads"]
     return new_paths
-        
-
-def symlink(input_file, link): #create a symbolic link at the output location referencing the input path.
-    input_file = os.path.abspath(input_file)
-    #abspath needed because path for os.symlink is relative to output, not current directory.
-    if os.path.islink(link):
-        os.remove(link)
-    try:
-        os.symlink(input_file, link)
-    except Exception:
-        logging.exception(f"Create symbolic link for {input_file} failed")
-        sys.exit(1)
 
 def mkdir(if_verbose, dir):
     if os.path.isdir(dir):
@@ -152,7 +169,43 @@ def mkdir(if_verbose, dir):
     else:
         if_verbose.print(f"Successfully created the directory {dir}")
 
+def install(args):
+    threads = args["thread"]
+    from STELR_utility import prefix, mkdir, abs_path
+    stelr_dir = prefix(abs_path(__file__),"/src")
+    envs_dir = f"{stelr_dir}/envs"
+    snake_dir = f"{envs_dir}/snakemake"
+    mkdir(snake_dir)
+    args["conda"] = {}
+    args["output"] = []
+    with open(f"{envs_dir}/stelr_environments.json","r") as input:
+        stelr_envs = json.load(input)
+        for env in stelr_envs:
+            env_file = f"{snake_dir}/{env}.yaml"
+            args["conda"][env] = env_file
+            args["output"].append(f".installed_{env}")
+            with open(env_file,"w") as output:
+                output.write(stelr_envs[env])
+    smk_config = f"{snake_dir}/installation_config"
+    for unnecessary_arg in ["fasta_reads","input","reference","library"]:
+        args.update({unnecessary_arg:"not needed for install"})
+    with open(smk_config,"w") as output:
+        json.dump(args,output)
+    command=[
+        "snakemake","-s",f"{stelr_dir}/src/stelr/STELR.smk",#"--quiet",
+        "--configfile",smk_config,
+        "--cores",str(threads),
+        "--use-conda","--conda-prefix",snake_dir,
+        "--conda-create-envs-only","--use-singularity"
+        ]
+    subprocess.run(command, cwd=snake_dir)
+    os.remove(smk_config)
+    #for file in args["output"]:
+    #    os.remove(f"{snake_dir}/{file}")
+    print(f"STELR {__version__} installation complete.")
+
 def get_args():
+
     if "--resume" in sys.argv:
         config = {"out":"."}
         resume_params = {
@@ -171,29 +224,34 @@ def get_args():
     optional = parser._action_groups.pop()
     required = parser.add_argument_group("required arguments")
 
-    # required
-    required.add_argument(
-        "-i",
-        "--reads",
-        type=str,
-        help="reads in fasta/fastq format or read alignments in bam format",
-        required=True,
-    )
-    required.add_argument(
-        "-r",
-        "--reference",
-        type=str,
-        help="reference genome in fasta format",
-        required=True,
-    )
-    required.add_argument(
-        "-l",
-        "--library",
-        type=str,
-        help="TE consensus sequences in fasta format",
-        required=True,
-    )
+    # required args
+    required_args = {
+        "reads":{"commands":["-i","--reads"],"properties":{"type":str,"help":"reads in fasta/fastq format or read alignments in bam format","required":True}},
+        "reference":{"commands":["-r","--reference"],"properties":{"type":str,"help":"reference genome in fasta format","required":True}},
+        "library":{"commands":["-l","--library"],"properties":{"type":str,"help":"TE consensus sequences in fasta format","required":True}}
+    }
+    optional_args = {}
 
+    if "--install" in sys.argv:
+        optional_args.update(required_args)
+        required_args = {}
+    elif "--make_annotation" in sys.argv:
+        print("arg make annotation")
+        optional_args.update({"reference":required_args.pop("reads")})
+    for arg in optional_args:
+        optional_args[arg]["properties"]["required"] = False
+
+    for arg in required_args:
+        required.add_argument(
+            *required_args[arg]["commands"],
+            **required_args[arg]["properties"]
+        )
+    for arg in optional_args:
+        optional.add_argument(
+            *optional_args[arg]["commands"],
+            **optional_args[arg]["properties"]
+        )
+    
     # optional
     optional.add_argument(
         "--aligner",
@@ -218,6 +276,12 @@ def get_args():
         "--presets",
         type=str,
         help="parameter presets for different sequencing technologies, please provide 'pacbio' or 'ont' (default = 'pacbio')",
+        required=False,
+    )
+    optional.add_argument(
+        "--sv_detector",
+        type=str,
+        help="Choose the method to be used for sv detection step, please provide 'sniffles1' or 'sniffles2' (default = 'sniffles1')",
         required=False,
     )
     optional.add_argument(
@@ -288,7 +352,7 @@ def get_args():
     optional.add_argument(
         "--different_contig_name",
         action="store_true",
-        help="If provided then TELR does not require the contig name to match before and after annotation liftover (default: require contig name to be the same before and after liftover)",
+        help="If provided then STELR does not require the contig name to match before and after annotation liftover (default: require contig name to be the same before and after liftover)",
         required=False,
     )
     optional.add_argument(
@@ -308,6 +372,25 @@ def get_args():
         "--resume",
         type=int,
         help="Resume a previous run by ID (default: begin new run)",
+        required=False,
+    )
+    optional.add_argument(
+        "--install",
+        action="store_true",
+        help="Use this option to install the stable conda environments required to run STELR.",
+        required=False,
+    )
+    optional.add_argument(
+        "--make_annotation",
+        action="store_true",
+        help="This option will only run the reference annotation part of the pipeline.",
+        required=False,
+    )
+    optional.add_argument(
+        "-a",
+        "--annotation",
+        type=str,
+        help="reference genome annotation in bed format",
         required=False,
     )
     parser._action_groups.append(optional)
@@ -337,6 +420,14 @@ def get_args():
     elif args.presets not in ["pacbio", "ont"]:
         print("Please provide a valid preset option (pacbio/ont), exiting...")
         sys.exit(1)
+
+    if args.sv_detector is None:
+        args.sv_detector = "Sniffles1"
+    elif args.sv_detector.lower() not in ["sniffles1", "sniffles2"]:
+        print("Please provide a valid sv_detector option (Sniffles1/Sniffles2), exiting...")
+        sys.exit(1)
+    else:
+        args.sv_detector = {"sniffles1":"Sniffles1", "sniffles2":"Sniffles2"}[args.sv_detector.lower()]
 
     if args.polish_iterations is None:
         args.polish_iterations = 1
@@ -393,8 +484,12 @@ def get_args():
 
     if args.overlap is None:
         args.overlap = 20
+    
 
-    return vars(args)
+    if "--install" in sys.argv:
+        install(vars(args))
+        quit()
+    else: return vars(args)
 
 class verbose:
     def __init__(self, verbose=False):
