@@ -202,29 +202,25 @@ def get_locus_info(locus):
         "chrom":locus[0],
         "start":locus[1],
         "end":locus[2],
-        "progress information":["Insertion detected by SV caller"],
-        "# supporting reads":0,
-        "supporting reads":locus[8].split(","),
-        "contig assembled?":False,
-        "assembled contig length":None,
+        "num_supporting_reads":0,
+        "supporting_reads":locus[8].split(","),
+        "passed_te_candidate_filter":False,
+        "contig_assembled":False,
+        "TE_predicted":False,
+        "assembled_contig_length":None,
         "TEs":[]
     }
-    info["# supporting reads"] = len(info["supporting reads"])
+    info["num_supporting_reads"] = len(info["supporting_reads"])
 
     if os.path.isdir(f"contigs/{contig_id}"):
-        info["progress information"].append("Passed initial TE candidate filtration")
-    else: 
-        info["progress information"].append("Filtered out at initial TE candidate filtration")
-        return info
+        info["passed_te_candidate_filter"] = True
+    else: return info
     
     if check_exist(f"contigs/{contig_id}/03_contig1.fa"):
-        info["progress information"].append("Contig assembled successfully")
-        info["contig assembled?"] = True
+        info["contig_assembled"] = True
         with open(f"contigs/{contig_id}/03_contig1.fa","r") as contig_fa:
-            info["assembled contig length"] = int(contig_fa.readline().strip().split("len=")[1])
-    else: 
-        info["progress information"].append("Failed to assemble contig")
-        return info
+            info["assembled_contig_length"] = int(contig_fa.readline().strip().split("len=")[1])
+    else: return info
     
     tes = glob.glob(f"contigs/{contig_id}/tes/*/18_output.json")
     for te in tes:
@@ -234,12 +230,7 @@ def get_locus_info(locus):
         except: pass
     
     num_tes = len(info["TEs"])
-    if num_tes > 1:
-        info["progress information"].append(f"{num_tes} TEs identified at this locus")
-    if num_tes == 1:
-        info["progress information"].append(f"{num_tes} TE identified at this locus")
-    else: 
-        info["progress information"].append("No TEs identified at this locus")
+    if num_tes > 0: info["TE_predicted"] = True
     
     return info
         
@@ -257,8 +248,8 @@ def write_contig_json(parsed_svs, output_file, threads=1):
         contig_info.sort(key=lambda x:x["ID"])
     
     categorized_contig_info = {
-        "no TE predicted":[c for c in contig_info if "Filtered out at initial TE candidate filtration" in c["progress information"]],
-        "TE predicted but local assembly failed":[c for c in contig_info if "Failed to assemble contig" in c["progress information"]],
+        "no_TE_predicted":[c for c in contig_info if not c["passed_te_candidate_filter"]],
+        "TE predicted but local assembly failed":[c for c in contig_info if c["passed_te_candidate_filter"] and not c["contig assembled?"]],
         "contig assembled, no TE found":[c for c in contig_info if c["contig assembled?"] and not c["TEs"]],
         "TE predicted at locus":[c for c in contig_info if c["TEs"]]
     }
