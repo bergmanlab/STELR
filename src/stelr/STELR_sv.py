@@ -186,7 +186,7 @@ def te_extract(parsed_vcf, ins_seqs, ins_rm_merge, ins_filtered, loci_eval):
             else: filtered_out.add(contig_name)
                 
     with open(loci_eval, "a") as output:
-        output.write("\tVCF sequence not repeatmasked\n".join(filtered_out + "\tVCF sequence not repeatmasked"))
+        output.write("\tVCF sequence not repeatmasked\n".join(filtered_out) + "\tVCF sequence not repeatmasked")
 
 def write_ins_seqs(parsed_vcf, out):
     with open(parsed_vcf, "r") as input, open(out, "w") as output:
