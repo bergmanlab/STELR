@@ -5,6 +5,7 @@ sys.path.insert(0,telr_dir)
 from STELR_utility import getdict, setdict, abs_path
 import subprocess
 import json
+import traceback
 
 
 rule all:
@@ -91,7 +92,8 @@ rule simulate_reads:
         log = "{simulation}/{cov}x_{ref_type}_simulated_reads.report"
     params:
         prefix = "{cov}x_{ref_type}_simulated_reads",
-        sub_sim_dir = "{simulation}/subsim_{ref_type}"
+        sub_sim_dir = "{simulation}/subsim_{ref_type}",
+        seed = config["simulation parameters"]["seed"]
     resources: 
         mem_mb = 100000,
         runtime = lambda wildcards: simulation_time(20000)
@@ -105,7 +107,7 @@ rule simulate_reads:
         pbsim --depth {wildcards.cov} --seed {params.seed} --prefix {params.prefix} --id-prefix '{wildcards.ref_type}' --hmm_model {input.model} ../../{input.reference} 2> {output.log}
         cd ../..
         cat {params.sub_sim_dir}/{params.prefix}*.fastq > {output.out}
- 	    rm -r {params.sub_sim_dir}
+        rm -r {params.sub_sim_dir}
         """
 
 def sub_simulations(wildcards):
@@ -158,7 +160,9 @@ rule get_mapping_annotation:
     #If running STELR, the evaluation pipeline will go ahead and generate a single repeatmasked reference annotation
     #This avoids having STELR run RepeatMasker on the reference genome individually for every simulation, which
     #is fairly resource intensive and completely redundant.
-    input: "mapping_reference.fasta"
+    input: 
+        reads = "mapping_reference.fasta",
+        library = "library.fa"
     output: "mapping_reference.fasta.te.bed"
     conda: config["telr_conda"]
     threads: config["resources"]["threads"]
@@ -168,7 +172,7 @@ rule get_mapping_annotation:
     conda: config["telr_conda"]
     shell:
         """
-        python3 {config[telr]} -r {input} -t {threads} --make_annotation
+        python3 {config[telr]} -r {input.reads} -l {input.library} -t {threads} --make_annotation
         """
 
 def stelr_command(wildcards):
@@ -192,9 +196,14 @@ checkpoint run_stelr:
         library = "library.fa",
         reference_annotation = "mapping_reference.fasta.te.bed"
     output:
-        "{simulation}/simulated_reads.stelr.{output}"
+        "{simulation}/simulated_reads.stelr.bed",
+        "{simulation}/simulated_reads.stelr.te.json",
+        "{simulation}/simulated_reads.stelr.loci.json",
+        "{simulation}/simulated_reads.stelr.loci.fasta",
+        "{simulation}/simulated_reads.stelr.te.fasta"
     params:
         polish_iterations = config["telr parameters"]["polishing iterations"],
+        aligner = config["telr parameters"]["aligner"],
         assembler = config["telr parameters"]["assembler"],
         polisher = config["telr parameters"]["polisher"],
         command = stelr_command,
@@ -207,7 +216,7 @@ checkpoint run_stelr:
     conda: config["telr_conda"]
     shell:
         """
-        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} -a {input.reference_annotation} -o {wildcards.simulation}
+        {params.command} -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --aligner {params.aligner} --assembler {params.assembler} --polisher {params.polisher} -a {input.reference_annotation} -o {wildcards.simulation}
         """
 
 checkpoint run_telr:
@@ -253,7 +262,7 @@ rule region_family_filter:
         "{some_file}_filter.bed"
     params:
         exclude_families = ["INE_1"],
-        exclude_nested_insertions = True
+        exclude_nested_insertions = False
     run:
         # set up functions to filter file based on params
         exclude_families = set(params.exclude_families)
@@ -266,15 +275,21 @@ rule region_family_filter:
             filters["exclude_families"] = lambda te: len(exclude_families.intersection(te.split("\t")[3].split("|"))) > 0
         
         # run bedtools intersect to find the intersection between the bed file and the regular recombination region
-        command = ["bedtools","intersect","-a",input.stelr_bed,"-b",input.filter_region,"-u"]
-        intersection = subprocess.run(command, capture_output=True, text=True).stdout.split("\n")
+        command = ["bedtools","intersect","-a",input.input_bed,"-b",input.filter_region,"-u"]
+        intersection = subprocess.run(command, capture_output=True, text=True).stdout.strip().split("\n")
 
         # filter the intersection using functions set up earlier based on params.
-        filtered_annotation = [line for line in intersection if not any([filters[param](line) for param in filters])]
+        try:
+            filtered_annotation = [line for line in intersection if not any([filters[param](line) for param in filters])]
+        except:
+            print(intersection)
+            traceback.raise_
 
         # write output
         with open(output[0], "w") as out:
             out.write("\n".join(filtered_annotation))
+            traceback.print_exc()
+            sys.exit(2)
 
 rule count_liftover:
     # count the # of lines in the annotation liftover once instead of doing it for every simulation's evaluation
@@ -349,7 +364,7 @@ rule parse_overlap:
         liftover_count = "liftover_count"
     output: "{simulation}/{telr}_eval_liftover.json"
     params:
-        exclude_nested_insertions = True,
+        exclude_nested_insertions = False,
         relax_mode = False
     run:
         # set conditions by which two sets of families are considered a match based on params
@@ -388,54 +403,357 @@ rule parse_overlap:
         with open(output[0],"w") as output_file:
             json.dump(summary_dict,output_file)
 
+"""
 
+SEQUENCE EVALUATION
 
+"""
 
+rule index_contigs:
+    input: "{simulation}/simulated_reads.{telr}.contig.fasta"
+    output: "{simulation}/simulated_reads.{telr}.contig.fasta.fai"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+# Shunhua's script sets up a list of contigs that match the criteria and then executes the sequence evaluation process on them in parallel.
+# My plan is to rebuild this in the opposite direction, first setting up rules for the individual sequence evaluations and then defining which ones it runs on
+# remember the filtering step, which will need to occur at the "end" rule that determines which TEs this process is run on.
+
+rule make_te_fasta:
+    # Shunhua's code calls this aligning the contig to reference; however I'm fairly certain it's only aligning the TE sequence.
+    #TELR evaluation will require an extra rule ahead of this one to make a similar output to the 18_output.json one
+    input: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json"
+    output: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta"
+    run:
+        with open(input[0],"r") as contig_jsons:
+            te_dict = json.load(contig_jsons)
+        with open(output[0],"w") as output_file:
+            output_file.write(f">{te_dict['contig_id']}\n{te_dict['te_sequence']}")
+
+#Test script: cd to te dir, python3, and then execute the following:
+'''
+import json
+with open("18_output.json","r") as contig_jsons:
+    te_dict = json.load(contig_jsons)
+
+with open("te.fasta","w") as output_file:
+    output_file.write(f">{te_dict['contig_id']}\n{te_dict['te_sequence']}")
+'''
+
+rule align_te_to_ref:
+    input: 
+        te = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta",
+        reference = "community_reference.fasta"
+    output: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/alignment_to_ref.paf"
+    params: 
+        preset = "asm10"
+    shell:
+        """
+        minimap2 -cx {params.preset} -v 0 --secondary=no {input.reference} {input.te} > {output}
+        """
+
+#Test script:
+'''
+minimap2 -cx asm10 -v 0 --secondary=no ../../../../../../community_reference.fasta te.fasta > alignment_to_ref.paf
+'''
+
+class paf_file:
+    def __init__(file_path):
+        def format_paf_line(line):
+            if line.strip():
+                line = line.split("\t")
+                for n in [1,7,8,9,10,11]:
+                    line[n] = int(line[n])
+                return line
+            else:
+                return None
+        with open(input.paf_file,"r") as paf_file:
+            paf_data = [format_paf_line(line) for line in paf_file]
+            self.data = [line for line in paf_data if line]
+        
+        max_len = max([line[10] for line in self.data])
+        self.longest = [line for line in self.data if line[10] == max_len][0]
+    
+    def count():
+        return len(self.data)
+    
+    def get(key):
+        if not "characteristics" in self.__dict__:
+            header = ["","query_len","","","","chrom","","start","end","matches","align_len","map_qual"]
+            self.characteristics = {key:self.longest[header.index(key)] for key in header if key}
+            self.characteristics["mapping_proportion"] = self.characteristics["matches"]/self.characteristics["query_len"],
+            self.characteristics["blast_identity"] = self.characteristics["matches"]/self.characteristics["align_len"]
+        return self.characteristics[key]
+
+class bed_file:
+    def __init__(bed_file):
+        if type(bed_file) is list:
+            self.data = bed_file
+        else:
+            def format_bed_line(line):
+                if line.strip():
+                    line = line.split("\t")
+                    for n in [1,2]:
+                        line[n] = int(line[n])
+                    return line
+                else: return [0,0,0,0,0,0]
+            with open(file_path,"r") as input_file:
+                self.data = [format_bed_line(line) for line in input_file if line.strip()]
+    
+    def get(key):
+        if not "characteristics" in self.__dict__:
+            header = ["chrom", "chromStart", "chromEnd", "name", "score", "strand"]
+            self.characteristics = {key:self.data[0][header.index(key)] for key in header if key}
+        return self.characteristics[key]
+    
+    def write_out(file_path):
+        if type(self.data[0]) is list:
+            lines = ["\t".join([str(i) for i in line]) for line in self.data]
+        else: lines = ["\t".join([str(i) for i in self.data])]
+        with open(file_path,"w") as output_file:
+            output_file.write("\n".join(lines))
+
+rule find_corresponding_annotation:
+    input:
+        telr_json = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json",
+        paf_file = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/alignment_to_ref.paf",
+        community_annotation = "community_annotation.bed",
+        ref = "community_reference.fasta"
+    output: 
+        bed = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.bed",
+        fasta = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.fasta"
+    run:
+        with open(input.telr_json,"r") as telr_json:
+            telr_data = json.load(telr_json)
+
+        #paf_data = get_paf_data(input.paf_file)
+        ref_paf = paf_file(input.paf_file)
+        ref_align_start = ref_paf.get("start")
+        ref_align_end = ref_paf.get("end")
+
+        annotation_data = bed_file(input.community_annotation).data
+        
+        aligned_chrom = ref_paf.longest[5]
+        candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and line[3] == telr_data["family"]]
+        location_filters = [
+            lambda start, end: start >= ref_align_start and end <= ref_align_end,
+            lambda start, end: start <= ref_align_end and end >= ref_align_end,
+            lambda start, end: start <= ref_align_start and end >= ref_align_start
+        ]
+        overlapping_annotations = [line for line in candidate_annotations if any([f(line[1],line[2]) for f in location_filters])]
+
+        if len(overlapping_annotations) == 1:
+            corresponding_annotation = overlapping_annotations[0]
+            bed_file(corresponding_annotation).write_out(output.bed)
+            coord = f"{corresponding_annotation[0]}:{corresponding_annotation[1]+1}-{corresponding_annotation[2]}"
+            with open(output.fasta,"w") as output_file:
+                subprocess.run(["samtools","faidx",input.ref,coord], stdout=output_file)
+        else:
+            if len(overlapping_annotations) > 1:
+                print(f"{wildcards.contig}: more than one TE in the aligned region")
+            else: print(f"{wildcards.contig}: no ref TEs in the aligned region"):
+            with open(output[0],"w") as output_file: output_file.write("")
+            with open(output[1],"w") as output_file: output_file.write("")
+
+#Test script (python3):
+#working on this rn
+'''
+import json
+with open("18_output.json","r") as telr_json:
+    telr_data = json.load(telr_json)
+
+def format_line(line):
+    if line.strip():
+        line = line.split("\t")
+        for n in [7,8,10]:
+            line[n] = int(line[n])
+        return line
+    else:
+        return [0,0,0,0,0,0,0,0,0,0,0]
+
+with open("alignment_to_ref.paf","r") as paf_file:
+    paf_data = [format_line(line) for line in paf_file]
+
+max_alignment_length = max([line[10] for line in paf_data])
+longest_alignment = [line for line in paf_data if line[10] == max_alignment_length][0]
+ref_align_start = longest_alignment[7]
+ref_align_end = longest_alignment[8]
+
+def format_bed_line(line):
+    if line.strip():
+        line = line.split("\t")
+        for n in [1,2]:
+            line[n] = int(line[n])
+        return line
+    else: return [0,0,0,0,0,0]
+
+with open("../../../../../../community_annotation.bed","r") as community_annotation:
+    annotation_data = [format_bed_line(line) for line in community_annotation if line.strip()]
+
+aligned_chrom = longest_alignment[5]
+candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and line[3] == telr_data["family"]]
+location_filters = [
+    lambda start, end: start >= ref_align_start and end <= ref_align_end,
+    lambda start, end: start <= ref_align_end and end >= ref_align_end,
+    lambda start, end: start <= ref_align_start and end >= ref_align_start
+]
+overlapping_annotations = [line for line in candidate_annotations if any([f(line[1],line[2]) for f in location_filters])]
+
+if len(overlapping_annotations) == 1:
+    import subprocess
+    corresponding_annotation = overlapping_annotations[0]
+    with open("corresponding_annotation.bed","w") as output_file:
+        output_file.write("\t".join([str(i) for i in corresponding_annotation]))
+    coord = f"{corresponding_annotation[0]}:{corresponding_annotation[1]+1}-{corresponding_annotation[2]}"
+    with open("corresponding_annotation.fasta","w") as output_file:
+        subprocess.run(["samtools","faidx","../../../../../../community_reference.fasta",coord], stdout=output_file)
+else:
+    if len(overlapping_annotations) > 1:
+        print(f"{wildcards.contig}: more than one TE in the aligned region")
+    else: print(f"{wildcards.contig}: no ref TEs in the aligned region"):
+    with open("corresponding_annotation.bed","w") as output_file: 
+        output_file.write("")
+    with open("corresponding_annotation.fasta","w") as output_file: 
+        output_file.write("")
 
 '''
-rule liftover_eval:
-    input:
-        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta",
-        region_mask = "regular_recomb.bed"
-        #annotation = "liftover_nonref.bed"
-    output:
-        "{simulation}/liftover_eval/annotation_filter.bed"
-    localrule: True
+
+rule get_corresponding_ref_fa:
+    input: 
+        telr_sequence = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta"
+        reference_sequence = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.fasta"
+    output: 
+        unsorted = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_unsorted.paf",
+        sorted = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_sorted.paf"
     shell:
         """
-        if [ ! -d {wildcards.simulation}/liftover_eval ]; then
-            mkdir {wildcards.simulation}/liftover_eval
+        if [ -s {input.reference_sequence} ]; then
+            minimap2 -cx asm5 --cs {input.reference_sequence} {input.telr_sequence} > {output.unsorted}
+            sort -k6,6 -k8,8n {output.unsorted} > {output.sorted}
+        else
+            touch {output}
         fi
-        touch {output}
         """
 
-rule af_eval:
-    input:
-        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta"
-        #annotation = "liftover_nonref.bed"
-    output:
-        "{simulation}/af_eval/telr_eval_af.json"
-    localrule: True
-    shell:
-        """
-        if [ ! -d {wildcards.simulation}/af_eval ]; then
-            mkdir {wildcards.simulation}/af_eval
-        fi
-        touch {output}
-        """
-
-rule seq_eval:
-    input:
-        telr_out = "{simulation}/simulated_reads.stelr.contig.fasta"
-        #annotation = "liftover_nonref.bed"
-    output:
-        "{simulation}/seq_eval/seq_eval.json"
-    localrule: True
-    shell:
-        """
-        if [ ! -d {wildcards.simulation}/seq_eval ]; then
-            mkdir {wildcards.simulation}/seq_eval
-        fi
-        touch {output}
-        """
+#Test script
 '''
+if [ -s corresponding_annotation.fasta ]; then
+    minimap2 -cx asm5 --cs corresponding_annotation.fasta te.fasta > diff_unsorted.paf
+    sort -k6,6 -k8,8n diff_unsorted.paf > diff_sorted.paf
+else
+    touch {output}
+fi
+'''
+
+# at this point I run into the get_paftools_var_summary function in Shunhua's script and I think I really 
+# need to play with the intermediate output of paftools.js to understand fully what it is counting.
+
+# currently mid implementation of compare_contig_ref_te_seqs which is nearly the last step of the single sequence evaluation process
+
+def get_paftools_summary(paf_file):
+    paftools_fields = {
+        "insertions":{
+            "1bp":0,
+            "2bp":0,
+            "[3,50)":0,
+            "[50,1000)":0,
+            "total":0
+        },
+        "deletions":{
+            "1bp":0,
+            "2bp":0,
+            "[3,50)":0,
+            "[50,1000)":0,
+            "total":0
+        }
+        "reference bases covered":0,
+        "substitutions":0
+    }
+    
+    paftools_summary = subprocess.run(["paftools.js","call","-l","100","-L","100",paf_file], capture_output=True, text=True).stderr
+
+    for line in paftools_summary.split("\n"):
+        try:
+            value = int(line.split()[0])
+            field = [field for field in paftools_fields if field in line][0]
+            if type(paftools_fields[field]) is int: paftools_fields[field] = value
+            else:
+                subfield = [subfield for subfield in paftools_fields[field] if subfield in line][0]
+                paftools_fields[field][subfield] = value
+                paftools_fields[field]["total"] += value
+        except: pass
+    
+    return paftools_fields
+
+
+rule get_sequence_similarity:
+    input:
+        ref_paf = "",
+        annotation_bed = "",
+        annotation_paf = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_sorted.paf",
+        telr_json = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json"
+    output:
+        "summary.json"
+    params:
+        flank_len = 500
+    run:
+        ref_paf = paf_file(input.ref_paf)
+        annotation_bed = bed_file(input.annotation_bed)
+        annotation_paf = paf_file(input.annotation_paf)
+        paftools_summary = get_paftools_summary(input.paf_file)
+        with open(input.telr_json,"r") as input_file:
+            json_data = json.load(input_file)
+        
+
+
+        eval_report = {
+            "contig_te_plus_flank_start": max(0,json_data["contig_te_start"] - params.flank_len),
+            "contig_te_plus_flank_end": min(json_data["contig_length"], json_data["contig_te_end"] + params.flank_len),
+            "contig_te_plus_flank_size": None,#calculated below
+            "num_contig_ref_hits": ref_paf.count(),
+            "ref_aligned_chrom": ref_paf.get("chrom"),
+            "ref_aligned_start": ref_paf.get("start"),
+            "ref_aligned_end": ref_paf.get("end"),
+            "contig_max_base_mapped_prop": ref_paf.get("mapping_proportion"),
+            "contig_mapp_qual": ref_paf.get("map_qual"),
+            "contig_num_residue_matches": ref_paf.get("matches"),
+            "contig_alignment_block_length": ref_paf.get("align_len"),
+            "contig_blast_identity": ref_paf.get("blast_identity"),
+            "ref_te_family": annotation_bed.get("name"),
+            "ref_te_length": annotation_bed.get("end") - annotation_bed.get("start"),
+            "num_contig_ref_te_hits": annotation_paf.count(),
+            "ref_te_aligned_chrom": None,
+            "ref_te_aligned_start": None,
+            "ref_te_aligned_end": None,
+            "contig_te_mapp_qual": None,
+            "contig_te_max_base_mapped_prop": None,
+            "contig_te_num_residue_matches": None,
+            "contig_te_alignment_block_length": None,
+            "contig_te_blast_identity": None,
+            "ref_te_num_bases_covered": None,
+            "ref_te_num_snvs": None,
+            "ref_te_num_1bp_del": None,
+            "ref_te_num_1bp_ins": None,
+            "ref_te_num_2bp_del": None,
+            "ref_te_num_2bp_ins": None,
+            "ref_te_num_50bp_del": None,
+            "ref_te_num_50bp_ins": None,
+            "ref_te_num_1kb_del": None,
+            "ref_te_num_1kb_ins": None,
+            "ref_te_num_ins": None,
+            "ref_te_num_del": None,
+            "ref_te_num_indel": None,
+        }
+        eval_report["contig_te_plus_flank_size"] = eval_report["contig_te_plus_flank_end"] - eval_report["contig_te_plus_flank_start"]
+        
+
+
+
+"""
+
+Evaluate Allele Frequency Predictions
+
+"""
+
