@@ -483,8 +483,8 @@ class paf_file:
         if not "characteristics" in self.__dict__:
             header = ["","query_len","","","","chrom","","start","end","matches","align_len","map_qual"]
             self.characteristics = {key:self.longest[header.index(key)] for key in header if key}
-            self.characteristics["mapping_proportion"] = self.characteristics["matches"]/self.characteristics["query_len"],
-            self.characteristics["blast_identity"] = self.characteristics["matches"]/self.characteristics["align_len"]
+            self.characteristics["map_prop"] = self.characteristics["matches"]/self.characteristics["query_len"],
+            self.characteristics["blast_id"] = self.characteristics["matches"]/self.characteristics["align_len"]
         return self.characteristics[key]
 
 class bed_file:
@@ -695,7 +695,7 @@ rule get_sequence_similarity:
         annotation_paf = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_sorted.paf",
         telr_json = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json"
     output:
-        "summary.json"
+        "{simulation}/{stelr_dir}/contigs/{contig}/{te}/sequence_evaluation.json"
     params:
         flank_len = 500
     run:
@@ -716,37 +716,39 @@ rule get_sequence_similarity:
             "ref_aligned_chrom": ref_paf.get("chrom"),
             "ref_aligned_start": ref_paf.get("start"),
             "ref_aligned_end": ref_paf.get("end"),
-            "contig_max_base_mapped_prop": ref_paf.get("mapping_proportion"),
+            "contig_max_base_mapped_prop": ref_paf.get("map_prop"),
             "contig_mapp_qual": ref_paf.get("map_qual"),
             "contig_num_residue_matches": ref_paf.get("matches"),
             "contig_alignment_block_length": ref_paf.get("align_len"),
-            "contig_blast_identity": ref_paf.get("blast_identity"),
+            "contig_blast_identity": ref_paf.get("blast_id"),
             "ref_te_family": annotation_bed.get("name"),
             "ref_te_length": annotation_bed.get("end") - annotation_bed.get("start"),
             "num_contig_ref_te_hits": annotation_paf.count(),
-            "ref_te_aligned_chrom": None,
-            "ref_te_aligned_start": None,
-            "ref_te_aligned_end": None,
-            "contig_te_mapp_qual": None,
-            "contig_te_max_base_mapped_prop": None,
-            "contig_te_num_residue_matches": None,
-            "contig_te_alignment_block_length": None,
-            "contig_te_blast_identity": None,
-            "ref_te_num_bases_covered": None,
-            "ref_te_num_snvs": None,
-            "ref_te_num_1bp_del": None,
-            "ref_te_num_1bp_ins": None,
-            "ref_te_num_2bp_del": None,
-            "ref_te_num_2bp_ins": None,
-            "ref_te_num_50bp_del": None,
-            "ref_te_num_50bp_ins": None,
-            "ref_te_num_1kb_del": None,
-            "ref_te_num_1kb_ins": None,
-            "ref_te_num_ins": None,
-            "ref_te_num_del": None,
-            "ref_te_num_indel": None,
+            "ref_te_aligned_chrom": annotation_paf.get("chrom"),
+            "ref_te_aligned_start": annotation_paf.get("start"),
+            "ref_te_aligned_end": annotation_paf.get("end"),
+            "contig_te_mapp_qual": annotation_paf.get("map_qual"),
+            "contig_te_max_base_mapped_prop": annotation_paf.get("map_prop"),
+            "contig_te_num_residue_matches": annotation_paf.get("matches"),
+            "contig_te_alignment_block_length": annotation_paf.get("align_len"),
+            "contig_te_blast_identity": annotation_paf.get("blast_id"),
+            "ref_te_num_bases_covered": paftools_summary["reference bases covered"],
+            "ref_te_num_snvs": paftools_summary["substitutions"],
+            "ref_te_num_1bp_del": paftools_summary["deletions"]["1bp"],
+            "ref_te_num_1bp_ins": paftools_summary["insertions"]["1bp"],
+            "ref_te_num_2bp_del": paftools_summary["deletions"]["2bp"],
+            "ref_te_num_2bp_ins": paftools_summary["insertions"]["2bp"],
+            "ref_te_num_50bp_del": paftools_summary["deletions"]["[3,50)"],
+            "ref_te_num_50bp_ins": paftools_summary["insertions"]["[3,50)"],
+            "ref_te_num_1kb_del": paftools_summary["deletions"]["[50,1000)"],
+            "ref_te_num_1kb_ins": paftools_summary["insertions"]["[50,1000)"],
+            "ref_te_num_ins": paftools_summary["insertions"]["total"],
+            "ref_te_num_del": paftools_summary["deletions"]["total"],
+            "ref_te_num_indel": paftools_summary["deletions"]["total"] + paftools_summary["insertions"]["total"],
         }
         eval_report["contig_te_plus_flank_size"] = eval_report["contig_te_plus_flank_end"] - eval_report["contig_te_plus_flank_start"]
+        with open(output[0],"w") as output_file:
+            json.dump(eval_report, output_file)
         
 
 
