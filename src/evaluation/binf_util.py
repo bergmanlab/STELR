@@ -3,7 +3,6 @@ import json
 import os
 import sys
 
-
 class paf_file:
     def __init__(self, file_path):
         def format_paf_line(line):
@@ -34,7 +33,7 @@ class paf_file:
         if not "characteristics" in self.__dict__:
             header = ["","query_len","","","","chrom","","start","end","matches","align_len","map_qual"]
             self.characteristics = {key:self.longest[header.index(key)] for key in header if key}
-            self.characteristics["map_prop"] = self.characteristics["matches"]/self.characteristics["query_len"],
+            self.characteristics["map_prop"] = self.characteristics["matches"]/self.characteristics["query_len"]
             self.characteristics["blast_id"] = self.characteristics["matches"]/self.characteristics["align_len"]
         return self.characteristics[key]
     
@@ -54,7 +53,7 @@ class paf_file:
                     "[3,50)":0,
                     "[50,1000)":0,
                     "total":0
-                }
+                },
                 "reference bases covered":0,
                 "substitutions":0
             }
@@ -76,7 +75,9 @@ class paf_file:
 
 class bed_file:
     def __init__(self, bed_file):
+        self.get_index = 0
         if type(bed_file) is list:
+            if not type(bed_file[0]) is list: bed_file = [bed_file]
             self.data = bed_file
         else:
             def format_bed_line(line):
@@ -86,11 +87,11 @@ class bed_file:
                         line[n] = int(line[n])
                     return line
                 else: return [0,0,0,0,0,0]
-            with open(file_path,"r") as input_file:
+            with open(bed_file,"r") as input_file:
                 self.data = [format_bed_line(line) for line in input_file if line.strip()]
     
     def get(self, key, i=0):
-        if not "characteristics" in self.__dict__ and self.get_index == i:
+        if not ("characteristics" in self.__dict__ and self.get_index == i):
             self.get_index = i
             header = ["chrom", "start", "end", "name", "score", "strand"]
             self.characteristics = {key:self.data[i][header.index(key)] for key in header if key}
@@ -119,8 +120,7 @@ class bed_file:
         return self.sequence
 
 class process:
-    def __init__(self, command=[], print_command=False)
-        self.verbose = print_command
+    def __init__(self, command=[]):
         self.command = [str(i) for i in command]
     
     def add(self, appendment):
@@ -130,20 +130,14 @@ class process:
             else: self.command.append(str(appendment))
     
     def output(self):
-        self.print()
         return subprocess.run(self.command,capture_output=True,text=True).stdout
     def run(self):
-        self.print()
         subprocess.run(self.command)    
     def write_to(self, output_file):
-        with open(outfile,"w") as output_file:
+        with open(output_file,"w") as output_file:
             subprocess.run(self.command, stdout=output_file)
-    
-    def print(self):
-        if self.verbose:
-            print(f"Now running command [ {' '.join(self.command)} ]",file=sys.stderr)
 
-def minimap2(target, query, *args **kwargs):
+def minimap2(target, query, *args, **kwargs):
 
     class minimap_preset:
         def __init__(self):
@@ -182,37 +176,33 @@ def minimap2(target, query, *args **kwargs):
         "cs":lambda _: "--cs"
     }
 
-    process = process(["minimap2"],print_command=True)
+    p = process(["minimap2"])
 
     for arg in args:
         arg = arg.lower()
         if arg in default_args:
             default_args.pop(arg)
         if arg in commands:
-            process.add(commands[arg]())
+            p.add(commands[arg](""))
     
     for kwarg in kwargs:
         key = kwarg.lower()
         if key in default_args:
             default_args.pop(key)
-        if arg in commands:
-            process.add(commands[key](kwargs[kwarg]))
-        elif key in files:
-            files[key] = kwargs[kwarg]
+        if key in commands:
+            p.add(commands[key](kwargs[kwarg]))
     
     for arg in default_args:
-        process.add(default_args[arg])
+        p.add(default_args[arg])
     
-    process.add([f"-{preset.arg}",preset.preset])    
-    process.add([target,query])
+    p.add([f"-{preset.arg}",preset.preset])    
+    p.add([target,query])
     
     output_args = [arg for arg in ["-o","output"] if arg in kwargs]
     if len(output_args) == 0:
-        return process.output()
+        return p.output()
     else:
-        output_arg = {"-o","-o","output":">"}[output_args[0]]
-        output_file = kwargs[output_args[0]]
-        process.add([output_arg,output_file])
-        process.run()
+        p.add(["-o",kwargs[output_args[0]]])
+        p.run()
     
 
