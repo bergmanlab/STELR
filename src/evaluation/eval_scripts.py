@@ -2,6 +2,105 @@ import os
 import sys
 import json
 from binf_util import paf_file, bed_file, minimap2, process
+from STELR_utility import string_to_bool
+
+def region_family_filter(filter_region, unfiltered_bed, filtered_bed, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
+    # set up functions to filter file based on params
+    exclude_families = set(exclude_families)
+    filters = {}
+    if exclude_nested_insertions:
+        filters["nested_insertions"] = lambda te: "|" in te.split("\t")[3]
+        if exclude_families:
+            filters["exclude_families"] = lambda te: te.split("\t")[3] in exclude_families
+    elif exclude_families:
+        filters["exclude_families"] = lambda te: len(exclude_families.intersection(te.split("\t")[3].split("|"))) > 0
+    
+    # run bedtools intersect to find the intersection between the bed file and the regular recombination region
+    intersection = process(["bedtools","intersect","-a",unfiltered_bed,"-b",filter_region,"-u"]).output(lines=True)
+
+    # filter the intersection using functions set up earlier based on params.
+    try:
+        filtered_annotation = [line for line in intersection if not any([filters[param](line) for param in filters])]
+    except:
+        print(intersection)
+        sys.exit(1)#TODO
+
+    filtered_annotation = "\n".join(filtered_annotation)
+
+    # write output
+    with open(filtered_bed, "w") as out:
+        out.write(filtered_annotation)
+    
+    if filtered_json:
+        with open(unfiltered_json,"r") as input_file:
+            json_data = json.load(input_file)
+        
+        filtered_json_data = [entry for entry in json_data if entry["ID"].replace("_","\t") in filtered_annotation]
+        
+        with open(filtered_json,"w") as output_file:
+            json.dump(filtered_json_data,output_file,indent=4)
+
+def evaluate_family_and_position(
+        telr_json,
+        filtered_annotation,
+        summary_file,
+        exclude_nested_insertions = False,
+        relax_mode = False,
+        window=5,
+        stelr="stelr"):
+    window = int(window)
+    stelr = stelr.upper()
+    exclude_nested_insertions = string_to_bool(exclude_nested_insertions)
+    relax_mode = string_to_bool(relax_mode)
+
+    # Load the expanded output json from (s)telr
+    with open(telr_json,"r") as input_file:
+        telr_json = json.load(input_file)
+    # Key each TE's output dict to its bed format string
+    telr_json = {te_dict["ID"]:te_dict for te_dict in telr_json}
+
+    # Define the quality checks TEs must pass to pass quality control
+    quality_checks = {                                      # TEs pass each quality control step if:
+        "allele_frequency": lambda value: value is not None,    # they have a predicted value for allele frequency
+        "support": lambda value: value == "both_sides"          # they have both-sided support
+    }
+    # set conditions by which two sets of families are considered a match based on params
+    if exclude_nested_insertions: # only one family allowed per TE
+        family_match = lambda overlap: overlap[3] == overlap[9]
+    elif params.relax_mode: # match as long as any TE family label is present in both sets
+        family_match = lambda overlap: len(set(overlap[3].split("|")).intersection(overlap[9].split("|"))) > 0
+    else: # match only if all TE labels in each set are present in both
+        family_match = lambda overlap: set(overlap[3].split("|")) == set(overlap[9].split("|"))
+
+    # make a list of TEs which failed because of each quality check
+    failed_tes = {value:[te for te in te_dict if not quality_checks[value](te_dict[te][value])] for value in quality_checks}
+    # the filtered TEs are those which are not present in any of the quality check failure lists.
+    filtered_predictions = bed_file([te for te in te_dict if not any([lambda value: te in failed_tes[value] for value in quality_checks])])
+    filtered_annotation = bed_file(filtered_annotation)
+
+    # create a list of true positives
+    true_positives = [te for te in filtered_predictions.intersect(filtered_annotation,window=window) if family_match(te)]
+    false_negatives = filtered_annotation.exclude(filtered_predictions,window=window)
+
+    # count and print the total number of TELR predictions that passed region, family, and quality control checks
+    total_filtered_predictions = len(filtered_predictions)
+    # calculate the # of true positives and false positives
+    summary_dict = {"total predictions":total_filtered_predictions,"true positives":len(true_positives)}
+    summary_dict["false positives"] = total_filtered_predictions - summary_dict["true positives"]
+    # count the number of lines in the bed file containing the false negatives
+    summary_dict["false negatives"] = len(false_negatives)
+    # calculate the precision and recall
+    summary_dict["precision"] = round(summary_dict["true positives"]/total_filtered_predictions, 3)
+    summary_dict["recall"] = round(summary_dict["true positives"]/len(filtered_annotation), 3)
+
+    # print summary statistcs and write them to output file
+    print(f"Total {stelr} Predictions (filtered): {total_filtered_predictions}")    
+    for stat in ["true positives","false positives","false negatives"]:
+        print(f"Number of {stelr} {stat}: {summary_dict[stat]}")        
+    with open(summary_file,"w") as output_file:
+        json.dump(summary_dict,output_file)
+
+
 
 def evaluate_sequence(
         telr_json,
@@ -13,7 +112,7 @@ def evaluate_sequence(
         keep_intermediates=False):
 
     intermediate_files = []
-    keep_intermediates = keep_intermediates and not str(keep_intermediates).lower() in ["false","f"]
+    keep_intermediates = string_to_bool(keep_intermediates)
     flank_len = int(flank_len)
     stelr = stelr.lower()
 
@@ -131,4 +230,10 @@ def evaluate_sequence(
 
 
 if __name__ == '__main__':
-    globals()[sys.argv[1]](*sys.argv[2:])
+    args = []
+    for arg in sys.argv[2:]:
+        try:
+            args.append(json.loads(arg))
+        except:
+            args.append(arg)
+    globals()[sys.argv[1]](*args)

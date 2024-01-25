@@ -7,6 +7,8 @@ import subprocess
 import json
 import traceback
 
+from eval_scripts import region_family_filter, evaluate_sequence
+
 
 rule all:
     input:
@@ -283,13 +285,28 @@ rule region_family_filter:
             filtered_annotation = [line for line in intersection if not any([filters[param](line) for param in filters])]
         except:
             print(intersection)
-            traceback.raise_
+            traceback.raise_#TODO
 
         # write output
         with open(output[0], "w") as out:
             out.write("\n".join(filtered_annotation))
             traceback.print_exc()
             sys.exit(2)
+
+rule filtered_json:
+    input: 
+        json = "{stelr_out}{allowance}.json",
+        filtered_bed = "{stelr_out}_filter.bed"
+    output: "{stelr_out}_filter.json"
+    run:
+        with open(input.json,"r") as in_file:
+            data = json.load(in_file)
+        with open(input.filtered_bed,"r") as in_file:
+            bed_file = in_file.read()
+        data = [item for item in data if item["ID"].replace("_","\t") in bed_file]
+        with open(output[0],"w") as out_file:
+            json.dump(data, out_file)
+
 
 rule count_liftover:
     # count the # of lines in the annotation liftover once instead of doing it for every simulation's evaluation
@@ -409,85 +426,11 @@ SEQUENCE EVALUATION
 
 """
 
-rule index_contigs:
-    input: "{simulation}/simulated_reads.{telr}.contig.fasta"
-    output: "{simulation}/simulated_reads.{telr}.contig.fasta.fai"
-    shell:
-        """
-        samtools faidx {input}
-        """
-
 # Shunhua's script sets up a list of contigs that match the criteria and then executes the sequence evaluation process on them in parallel.
 # My plan is to rebuild this in the opposite direction, first setting up rules for the individual sequence evaluations and then defining which ones it runs on
 # remember the filtering step, which will need to occur at the "end" rule that determines which TEs this process is run on.
 
-rule make_stelr_te_fasta:
-    # Shunhua's code calls this aligning the contig to reference; however I'm fairly certain it's only aligning the TE sequence.
-    #TELR evaluation will require an extra rule ahead of this one to make a similar output to the 18_output.json one
-    input: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json"
-    output: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta"
-    shell:
-        """
-        python3 {config[seq_eval]} make_stelr_te_fasta {input} {output}
-        """
 
-rule align_te_to_ref:
-    input: 
-        te = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta",
-        reference = "community_reference.fasta"
-    output: "{simulation}/{stelr_dir}/contigs/{contig}/{te}/alignment_to_ref.paf"
-    params: 
-        preset = "asm10"
-    shell:
-        """
-        minimap2 -cx {params.preset} -v 0 --secondary=no {input.reference} {input.te} > {output}
-        """
-
-rule find_corresponding_annotation:
-    input:
-        telr_json = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json",
-        paf_file = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/alignment_to_ref.paf",
-        community_annotation = "community_annotation.bed",
-        ref = "community_reference.fasta"
-    output: 
-        bed = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.bed",
-        fasta = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.fasta"
-    shell:
-        """
-        python3 {config[seq_eval]} find_corresponding_annotation {input} {output}
-        """
-
-rule get_corresponding_ref_fa:
-    input: 
-        telr_sequence = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/te.fasta"
-        reference_sequence = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/corresponding_annotation.fasta"
-    output: 
-        unsorted = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_unsorted.paf",
-        sorted = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_sorted.paf"
-    shell:
-        """
-        if [ -s {input.reference_sequence} ]; then
-            minimap2 -cx asm5 --cs {input.reference_sequence} {input.telr_sequence} > {output.unsorted}
-            sort -k6,6 -k8,8n {output.unsorted} > {output.sorted}
-        else
-            touch {output}
-        fi
-        """
-
-rule get_sequence_similarity:
-    input:
-        ref_paf = "",
-        annotation_bed = "",
-        annotation_paf = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/diff_sorted.paf",
-        telr_json = "{simulation}/{stelr_dir}/contigs/{contig}/{te}/18_output.json"
-    output:
-        "{simulation}/{stelr_dir}/contigs/{contig}/{te}/sequence_evaluation.json"
-    params:
-        flank_len = 500
-    shell:
-        """
-        python3 {config[seq_eval]} sequence_eval_report {params.flank_len} {input} {output}
-        """
         
 
 

@@ -141,7 +141,7 @@ def get_contig_length(contig):
 
 def string_to_bool(bool_string, default=False):
     bool_string = str(bool_string).lower()
-    bool_dict = {"true":True,"false":False}
+    bool_dict = {"true":True,"false":False,"t":True,"f":False}
     if bool_string in bool_dict: return bool_dict[bool_string]
     else: return default
 
