@@ -179,7 +179,7 @@ class process:
                 self.command = self.command + [str(i) for i in appendment]
             else: self.command.append(str(appendment))
     def pipe(self, stdin):
-        self.run_options["stdin"] = stdin
+        self.run_options["input"] = stdin
     
     def output(self, lines = False):
         output = subprocess.run(self.command,capture_output=True,text=True,**self.run_options).stdout
@@ -187,9 +187,9 @@ class process:
         return output
     def run(self):
         subprocess.run(self.command,**self.run_options)    
-    def write_to(self, output_file):
-        with open(output_file,"w") as output_file:
-            subprocess.run(self.command, **self.run_options, stdout=output_file)
+    def write_to(self, file):        
+        with open(file,"w") as output_file:
+            output_file.write(self.output())
 
 def minimap2(target, query, *args, **kwargs):
 

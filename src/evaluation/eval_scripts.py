@@ -57,7 +57,7 @@ def evaluate_family_and_position(
     with open(telr_json,"r") as input_file:
         telr_json = json.load(input_file)
     # Key each TE's output dict to its bed format string
-    telr_json = {te_dict["ID"]:te_dict for te_dict in telr_json}
+    te_dict = {te_dict["ID"]:te_dict for te_dict in telr_json}
 
     # Define the quality checks TEs must pass to pass quality control
     quality_checks = {                                      # TEs pass each quality control step if:
@@ -67,7 +67,7 @@ def evaluate_family_and_position(
     # set conditions by which two sets of families are considered a match based on params
     if exclude_nested_insertions: # only one family allowed per TE
         family_match = lambda overlap: overlap[3] == overlap[9]
-    elif params.relax_mode: # match as long as any TE family label is present in both sets
+    elif relax_mode: # match as long as any TE family label is present in both sets
         family_match = lambda overlap: len(set(overlap[3].split("|")).intersection(overlap[9].split("|"))) > 0
     else: # match only if all TE labels in each set are present in both
         family_match = lambda overlap: set(overlap[3].split("|")) == set(overlap[9].split("|"))
@@ -75,7 +75,7 @@ def evaluate_family_and_position(
     # make a list of TEs which failed because of each quality check
     failed_tes = {value:[te for te in te_dict if not quality_checks[value](te_dict[te][value])] for value in quality_checks}
     # the filtered TEs are those which are not present in any of the quality check failure lists.
-    filtered_predictions = bed_file([te for te in te_dict if not any([lambda value: te in failed_tes[value] for value in quality_checks])])
+    filtered_predictions = bed_file([te_dict[te] for te in te_dict if not any([(lambda x: te in failed_tes[x])(value) for value in quality_checks])])
     filtered_annotation = bed_file(filtered_annotation)
 
     # create a list of true positives
