@@ -7,7 +7,7 @@ import subprocess
 import json
 import traceback
 
-from eval_scripts import region_family_filter, evaluate_sequence
+from eval_scripts import region_family_filter, evaluate_family_and_position, evaluate_sequence
 
 
 rule all:
@@ -244,7 +244,102 @@ checkpoint run_telr:
         telr -i {input.reads} -r {input.reference} -l {input.library} -t {threads} -k -p {params.polish_iterations} --assembler {params.assembler} --polisher {params.polisher} {params.annotation} -o {wildcards.simulation}
         """
     
+"""
 
+FILTER ANNOTATION AND STELR/TELR OUTPUT BY REGION AND FAMILY
+
+"""
+
+rule filter_annotation:
+    input:
+        filter_region = "regular_recomb.bed",
+        unfiltered_bed = "annotation_liftover.bed"#TODO:still need to add this to config
+    output:
+        filtered_bed = "annotation_litover_filtered.bed"
+    params:
+        exclude_families = ["INE_1"], 
+        exclude_nested_insertions = False
+    run:
+        region_family_filter(
+            filter_region = input.filter_region,
+            unfiltered_bed = input.unfiltered_bed,
+            filtered_bed = output.filtered_bed,
+            exclude_families = params.exclude_families, 
+            exclude_nested_insertions = params.exclude_nested_insertions
+        )
+        '''
+        #For testing and debugging purposes, this rule can also be run on the command line as follows:
+        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
+            "filter_region":"regular_recomb.bed",
+            "unfiltered_bed":"annotation_liftover.bed",
+            "filtered_bed":"annotation_litover_filtered.bed",
+            "exclude_families":["INE_1"],
+            "exclude_nested_insertions":false
+        }'
+        '''
+
+rule filter_stelr_output:
+    input:
+        filter_region = "regular_recomb.bed",
+        unfiltered_bed = "{simulation}/simulated_reads.stelr.bed",
+        unfiltered_json = "{simulation}/simulated_reads.stelr.te.json"
+    output:
+        filtered_json = "{simulation}/simulated_reads.stelr.te_filtered.json"
+    params:
+        exclude_families = ["INE_1"], 
+        exclude_nested_insertions = False
+    run:
+        region_family_filter(
+            filter_region = input.filter_region,
+            unfiltered_bed = input.unfiltered_bed,
+            unfiltered_json = input.unfiltered_json,
+            filtered_json = output.filtered_json,
+            exclude_families = params.exclude_families, 
+            exclude_nested_insertions = params.exclude_nested_insertions
+        )
+        '''
+        #For testing and debugging purposes, this rule can also be run on the command line as follows:
+        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
+            "filter_region":"regular_recomb.bed",
+            "unfiltered_bed":"50x_diploid_homozygous/simulated_reads.stelr.bed",
+            "unfiltered_json":"50x_diploid_homozygous/simulated_reads.stelr.te.json",
+            "filtered_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
+            "exclude_families":["INE_1"],
+            "exclude_nested_insertions":false
+        }'
+        '''
+
+rule filter_telr_output:
+    #it is probably important that any changes made to the above rule are also made to this one and vice versa.
+    input:
+        filter_region = "regular_recomb.bed",
+        unfiltered_bed = "{simulation}/simulated_reads.telr.bed",
+        unfiltered_json = "{simulation}/simulated_reads.telr.expanded.json"
+    output:
+        filtered_json = "{simulation}/simulated_reads.telr.te_filtered.json"
+    params:
+        exclude_families = ["INE_1"], 
+        exclude_nested_insertions = False
+    run:
+        region_family_filter(
+            filter_region = input.filter_region,
+            unfiltered_bed = input.unfiltered_bed,
+            unfiltered_json = input.unfiltered_json,
+            filtered_json = output.filtered_json,
+            exclude_families = params.exclude_families, 
+            exclude_nested_insertions = params.exclude_nested_insertions
+        )
+        '''
+        #For testing and debugging purposes, this rule can also be run on the command line as follows:
+        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
+            "filter_region":"regular_recomb.bed",
+            "unfiltered_bed":"50x_diploid_homozygous/simulated_reads.telr.bed",
+            "unfiltered_json":"50x_diploid_homozygous/simulated_reads.telr.expanded.json",
+            "filtered_json":"50x_diploid_homozygous/simulated_reads.telr.te_filtered.json",
+            "exclude_families":["INE_1"],
+            "exclude_nested_insertions":false
+        }'
+        '''
 
 """
 
@@ -252,15 +347,44 @@ EVALUATE STELR COORDINATE AND FAMILY PREDICTIONS
 
 """
 
-
+rule family_position_evaluation:
+    input:
+        filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
+        filtered_annotation = "annotation_litover_filtered.bed"
+    output:
+        summary_file = "{simulation}/family_position_summary.{stelr}.json"
+    params:
+        exclude_nested_insertions = False,
+        relax_mode = False,
+        window=5
+    run:
+        evaluate_family_and_position(
+            telr_json = input.telr_json,
+            filtered_annotation = input.filtered_annotation,
+            summary_file output.summary_file,
+            exclude_nested_insertions = params.exclude_nested_insertions,
+            relax_mode = params.relax_mode,
+            window = params.window,
+            stelr = wildcards.stelr
+        )
+        '''
+        #For testing and debugging purposes, this rule can also be run on the command line as follows:
+        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
+            "telr_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
+            "filtered_annotation":"annotation_litover_filtered.bed",
+            "summary_file":"50x_diploid_homozygous/family_position_summary.stelr.json",
+            "exclude_nested_insertions":false,
+            "relax_mode":false,
+            "window":5,
+            stelr:"stelr"
+        }'
+        '''
 
 """
 
 SEQUENCE EVALUATION
 
 """
-
-
         
 
 
