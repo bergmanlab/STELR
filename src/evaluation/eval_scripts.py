@@ -5,6 +5,10 @@ from binf_util import paf_file, bed_file, minimap2, process
 from STELR_utility import string_to_bool
 
 def region_family_filter(filter_region, unfiltered_bed, filtered_bed, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
+    # Filter a bed file by intersection with the regular recombination region,
+    # By excluding "nested" insertions ie insertions with multiple predicted families,
+    # And by excluding insertions labelled as excluded families, ie "INE_1"
+    
     # set up functions to filter file based on params
     exclude_families = set(exclude_families)
     filters = {}
