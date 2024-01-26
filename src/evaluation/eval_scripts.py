@@ -2,9 +2,8 @@ import os
 import sys
 import json
 from binf_util import paf_file, bed_file, minimap2, process
-from STELR_utility import string_to_bool
 
-def region_family_filter(filter_region, unfiltered_bed, filtered_bed, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
+def region_family_filter(filter_region, unfiltered_bed, filtered_bed = None, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
     # Filter a bed file by intersection with the regular recombination region,
     # By excluding "nested" insertions ie insertions with multiple predicted families,
     # And by excluding insertions labelled as excluded families, ie "INE_1"
@@ -32,8 +31,9 @@ def region_family_filter(filter_region, unfiltered_bed, filtered_bed, unfiltered
     filtered_annotation = "\n".join(filtered_annotation)
 
     # write output
-    with open(filtered_bed, "w") as out:
-        out.write(filtered_annotation)
+    if filtered_bed:
+        with open(filtered_bed, "w") as out:
+            out.write(filtered_annotation)
     
     if filtered_json:
         with open(unfiltered_json,"r") as input_file:
@@ -52,10 +52,7 @@ def evaluate_family_and_position(
         relax_mode = False,
         window=5,
         stelr="stelr"):
-    window = int(window)
     stelr = stelr.upper()
-    exclude_nested_insertions = string_to_bool(exclude_nested_insertions)
-    relax_mode = string_to_bool(relax_mode)
 
     # Load the expanded output json from (s)telr
     with open(telr_json,"r") as input_file:
@@ -116,8 +113,6 @@ def evaluate_sequence(
         keep_intermediates=False):
 
     intermediate_files = []
-    keep_intermediates = string_to_bool(keep_intermediates)
-    flank_len = int(flank_len)
     stelr = stelr.lower()
 
     # load TELR or STELR json file
