@@ -75,12 +75,15 @@ def evaluate_family_and_position(
 
     # make a list of TEs which failed because of each quality check
     failed_tes = {value:[te for te in te_dict if not quality_checks[value](te_dict[te][value])] for value in quality_checks}
+    #print(failed_tes)
     # the filtered TEs are those which are not present in any of the quality check failure lists.
+
     filtered_predictions = bed_file([te_dict[te] for te in te_dict if not any([(lambda x: te in failed_tes[x])(value) for value in quality_checks])])
+    filtered_predictions.write_out("test_intermediate.bed")
     filtered_annotation = bed_file(filtered_annotation)
 
     # create a list of true positives
-    true_positives = [te for te in filtered_predictions.intersect(filtered_annotation,window=window) if family_match(te)]
+    true_positives = bed_file([te[:6] for te in filtered_predictions.intersect(filtered_annotation,window=window) if family_match(te)])
     false_negatives = filtered_annotation.exclude(filtered_predictions,window=window)
 
     # count and print the total number of TELR predictions that passed region, family, and quality control checks
@@ -99,7 +102,7 @@ def evaluate_family_and_position(
     for stat in ["true positives","false positives","false negatives"]:
         print(f"Number of {stelr} {stat}: {summary_dict[stat]}")        
     with open(summary_file,"w") as output_file:
-        json.dump(summary_dict,output_file)
+        json.dump(summary_dict,output_file, indent=4)
 
 
 
