@@ -45,7 +45,7 @@ def region_family_filter(filter_region, unfiltered_bed, filtered_bed = None, unf
             json.dump(filtered_json_data,output_file,indent=4)
 
 def evaluate_family_and_position(
-        telr_json,
+        stelr_json,
         filtered_annotation,
         summary_file,
         exclude_nested_insertions = False,
@@ -54,11 +54,11 @@ def evaluate_family_and_position(
         stelr="stelr"):
     stelr = stelr.upper()
 
-    # Load the expanded output json from (s)telr
-    with open(telr_json,"r") as input_file:
-        telr_json = json.load(input_file)
+    # Load the expanded output json from (s)stelr
+    with open(stelr_json,"r") as input_file:
+        stelr_json = json.load(input_file)
     # Key each TE's output dict to its bed format string
-    te_dict = {te_dict["ID"]:te_dict for te_dict in telr_json}
+    te_dict = {te_dict["ID"]:te_dict for te_dict in stelr_json}
 
     # Define the quality checks TEs must pass to pass quality control
     quality_checks = {                                      # TEs pass each quality control step if:
@@ -104,7 +104,7 @@ def evaluate_family_and_position(
 
 
 def evaluate_sequence(
-        telr_json,
+        stelr_json,
         ref_fasta,
         community_annotation,
         report_file,
@@ -116,18 +116,19 @@ def evaluate_sequence(
     stelr = stelr.lower()
 
     # load TELR or STELR json file
-    try:
-        telr_data = json.loads(telr_json)
-        telr_data["family"]
-    except:
-        with open(telr_json,"r") as telr_json:
-            telr_data = json.load(telr_json)
+    if not type(stelr_json) is dict:
+        try:
+            stelr_data = json.loads(stelr_json)
+            stelr_data["family"]
+        except:
+            with open(stelr_json,"r") as stelr_json:
+                stelr_data = json.load(stelr_json)
 
     # Make a fasta file containing the TE sequence predicted by STELR
-    prediction_head = f"{telr_data['ID']}.{stelr}"
+    prediction_head = f"{stelr_data['ID']}.{stelr}"
     predicted_te_fasta = f"{prediction_head}.fasta"
     with open(predicted_te_fasta,"w") as te_fasta_file:
-        te_fasta_file.write(f">{telr_data['ID']}\n{telr_data['te_sequence']}")
+        te_fasta_file.write(f">{stelr_data['ID']}\n{stelr_data['te_sequence']}")
         intermediate_files.append(predicted_te_fasta)
 
     # align the STELR-predicted TE sequence to the community reference genome
@@ -147,7 +148,7 @@ def evaluate_sequence(
     
     # filter all of the annotated TEs in the reference genome by whether they overlap with the position where the predicted TE aligned to the reference
     aligned_chrom = prediction_paf.longest[5]
-    candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and line[3] == telr_data["family"]]
+    candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and line[3] == stelr_data["family"]]
     location_filters = [
         lambda start, end: start >= ref_align_start and end <= ref_align_end,
         lambda start, end: start <= ref_align_end and end >= ref_align_end,
@@ -179,8 +180,8 @@ def evaluate_sequence(
     
     #compile report
     eval_report = {
-        "contig_te_plus_flank_start": max(0,telr_data["contig_te_start"] - flank_len),
-        "contig_te_plus_flank_end": min(telr_data["contig_length"], telr_data["contig_te_end"] + flank_len),
+        "contig_te_plus_flank_start": max(0,stelr_data["contig_te_start"] - flank_len),
+        "contig_te_plus_flank_end": min(stelr_data["contig_length"], stelr_data["contig_te_end"] + flank_len),
         "contig_te_plus_flank_size": None,#calculated below
         "num_contig_ref_hits": prediction_paf.count(),
         "ref_aligned_chrom": prediction_paf.get("chrom"),
@@ -228,8 +229,14 @@ def evaluate_sequence(
             os.remove(file)
 
 
+def evaluate_zygosity():
+    pass
+
 if __name__ == '__main__':
     args = []
+    if len(sys.argv[2:]) == 1:
+        globals()[sys.argv[1]](**json.loads(sys.argv[2]))
+        quit()
     for arg in sys.argv[2:]:
         try:
             args.append(json.loads(arg))

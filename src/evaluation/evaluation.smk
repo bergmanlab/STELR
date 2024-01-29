@@ -359,7 +359,7 @@ rule family_position_evaluation:
         window=5
     run:
         evaluate_family_and_position(
-            telr_json = input.telr_json,
+            stelr_json = input.telr_json,
             filtered_annotation = input.filtered_annotation,
             summary_file output.summary_file,
             exclude_nested_insertions = params.exclude_nested_insertions,
@@ -386,6 +386,38 @@ SEQUENCE EVALUATION
 
 """
         
+rule run_seq_eval:
+    input:
+        filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
+        ref_fasa = "community_reference.fasta"
+        filtered_annotation = "annotation_litover_filtered.bed"
+    output: "{simulation}/simultated_reads.{stelr}.te_{index}_seq_report.json"
+    params:
+        flank_len = 500,
+        keep_intermediates = False
+    run:
+        with open(input.filtered_json,"r") as json_file:
+            stelr_json = json.load(json_file)[int(wildcards.index)]
+        evaluate_sequence(
+            stelr_json = stelr_json,
+            ref_fasta = input.ref_fasta,
+            community_annotation = input.filtered_annotation,
+            report_file = output[0],
+            flank_len = params.flank_len,
+            stelr = wildcards.stelr,
+            keep_intermediates = params.keep_intermediates
+        )
+
+#TODO checkpoint above?
+def list_seq_jsons(wildcards):
+    with open(f"{wildcards.simulation}/simulated_reads.{stelr}.te_filtered.json","r") as input_file:
+        n = len(json.load(input_file))
+    return [f"{wildcards.simulation}/simultated_reads.{wildcards.stelr}.te_{index}_seq_report.json" for index in range(n)]
+rule all_seq_evals:
+    input:
+        list_seq_jsons
+    output: ""
+    #TODO: may need to add something here later
 
 
 
@@ -395,3 +427,10 @@ Evaluate Allele Frequency Predictions
 
 """
 
+
+rule zygosity_evaluation:
+    input:
+        filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
+        filtered_annotation = "annotation_litover_filtered.bed"
+    output:
+        summary_file = "{simulation}/zygosity_summary.{stelr}.json"
