@@ -229,8 +229,65 @@ def evaluate_sequence(
             os.remove(file)
 
 
-def evaluate_zygosity():
-    pass
+def evaluate_zygosity(simulation, stelr_json, output_file):
+    coverage, ploidy, genotype = simulation.split("_")
+
+    target_bucket = {
+        "diploid":{
+            "homozygous":3,
+            "heterozygous":1
+        },
+        "tetraploid":{
+            "simplex":0,
+            "duplex":1,
+            "triplex":2,
+            "quadruplex":3
+        }
+    }[ploidy][genotype]
+
+    buckets = [[0,0.375],[0.375,0.625],[0.625,0.875],[0.875,1]]
+
+    with open(stelr_json,"r") as input_file:
+        stelr_json = json.load(input_file)
+    
+    zygosities = [d["allele_frequency"] for d in stelr_json if not d["allele_frequency"] is None]
+    num_predicted = len(zygosities)
+    num_not_predicted = len(stelr_json) - num_predicted
+    
+    buckets = [len([item for item in zygosities if item > bucket[0] and item <= bucket[1]]) for bucket in buckets]
+
+    precision = buckets[target_bucket]/num_predicted
+
+    if ploidy == "diploid":
+        summary_dict = {
+            "simulation": simulation,
+            "coverage": coverage,
+            "ploidy": ploidy,
+            "actual_zygosity": genotype,
+            "num_pred_total": num_predicted,
+            "num_pred_hom": buckets[3],
+            "num_pred_het": buckets[1],
+            "num_pred_unclassified": buckets[0] + buckets[2],
+            "precison": precision,
+        }
+    else:
+        summary_dict = {
+            "simulation": simulation,
+            "coverage": coverage,
+            "ploidy": ploidy,
+            "actual_zygosity": genotype,
+            "num_pred_total": num_predicted,
+            "num_simplex": buckets[0],
+            "num_duplex": buckets[1],
+            "num_triplex": buckets[2],
+            "num_quadruplex": buckets[3],
+            "precison": precision,
+        }
+    
+    with open(output_file,"w") as output:
+        json.dump(summary_dict, output, indent=4)
+
+
 
 if __name__ == '__main__':
     args = []

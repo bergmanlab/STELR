@@ -7,7 +7,7 @@ import subprocess
 import json
 import traceback
 
-from eval_scripts import region_family_filter, evaluate_family_and_position, evaluate_sequence
+from eval_scripts import region_family_filter, evaluate_family_and_position, evaluate_sequence, evaluate_zygosity
 
 
 rule all:
@@ -429,8 +429,19 @@ Evaluate Allele Frequency Predictions
 
 
 rule zygosity_evaluation:
-    input:
-        filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
-        filtered_annotation = "annotation_litover_filtered.bed"
-    output:
-        summary_file = "{simulation}/zygosity_summary.{stelr}.json"
+    input: "{simulation}/simulated_reads.{stelr}.te_filtered.json"
+    output: "{simulation}/zygosity_summary.{stelr}.json"
+    run:
+        evaluate_zygosity(
+            simulation = wildcards.simulation,
+            stelr_json = input[0],
+            output_file = output[0]
+        )
+        '''
+        #For testing and debugging purposes, this rule can also be run on the command line as follows:
+        python3 $stelr_src/evaluation/eval_scripts.py evaluate_zygosity '{
+            "simulation":"50x_diploid_homozygous",
+            "stelr_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
+            "output_file":"50x_diploid_homozygous/zygosity_summary.stelr.json"
+        }'
+        '''
