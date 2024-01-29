@@ -369,14 +369,14 @@ rule family_position_evaluation:
         )
         '''
         #For testing and debugging purposes, this rule can also be run on the command line as follows:
-        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
-            "telr_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
-            "filtered_annotation":"annotation_litover_filtered.bed",
+        python3 $stelr_src/evaluation/eval_scripts.py evaluate_family_and_position '{
+            "stelr_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
+            "filtered_annotation":"annotation_liftover_filtered.bed",
             "summary_file":"50x_diploid_homozygous/family_position_summary.stelr.json",
             "exclude_nested_insertions":false,
             "relax_mode":false,
             "window":5,
-            stelr:"stelr"
+            "stelr":"stelr"
         }'
         '''
 
