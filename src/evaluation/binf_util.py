@@ -23,13 +23,19 @@ class paf_file:
         
         self.data = [line for line in paf_data if line]
         
-        max_len = max([line[10] for line in self.data])
-        self.longest = [line for line in self.data if line[10] == max_len][0]
+        if self:
+            max_len = max([line[10] for line in self.data])
+            self.longest = [line for line in self.data if line[10] == max_len][0]
+        else: self.longest = None
+    
+    def __bool__(self):
+        return bool(self.data)
     
     def count(self):
         return len(self.data)
     
     def get(self, key):
+        if not self: return None
         if not "characteristics" in self.__dict__:
             header = ["","query_len","","","","chrom","","start","end","matches","align_len","map_qual"]
             self.characteristics = {key:self.longest[header.index(key)] for key in header if key}
@@ -38,6 +44,25 @@ class paf_file:
         return self.characteristics[key]
     
     def paftools_summary(self):
+        if not self:
+            return {
+                "insertions":{
+                    "1bp":None,
+                    "2bp":None,
+                    "[3,50)":None,
+                    "[50,1000)":None,
+                    "total":None
+                },
+                "deletions":{
+                    "1bp":None,
+                    "2bp":None,
+                    "[3,50)":None,
+                    "[50,1000)":None,
+                    "total":None
+                },
+                "reference bases covered":None,
+                "substitutions":None
+            }
         if not "paftools_fields" in self.__dict__:
             self.paftools_fields = {
                 "insertions":{
@@ -96,6 +121,9 @@ class bed_file:
 
     def __len__(self):
         return len(self.data)
+    
+    def __bool__(self):
+        return bool(self.data)
     
     def get(self, key, i=0):
         if not ("characteristics" in self.__dict__ and self.get_index == i):
