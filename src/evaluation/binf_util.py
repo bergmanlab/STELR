@@ -4,7 +4,7 @@ import os
 import sys
 
 class paf_file:
-    def __init__(self, file_path):
+    def __init__(self, file_path=""):
         def format_paf_line(line):
             if line.strip():
                 line = line.split("\t")
@@ -26,6 +26,7 @@ class paf_file:
         if self:
             max_len = max([line[10] for line in self.data])
             self.longest = [line for line in self.data if line[10] == max_len][0]
+            self.paftools_summary()#debug
         else: self.longest = None
     
     def __bool__(self):
@@ -42,6 +43,12 @@ class paf_file:
             self.characteristics["map_prop"] = self.characteristics["matches"]/self.characteristics["query_len"]
             self.characteristics["blast_id"] = self.characteristics["matches"]/self.characteristics["align_len"]
         return self.characteristics[key]
+    
+    def indels(self):
+        paftools_summary = self.paftools_summary()
+        try:
+            return paftools_summary["deletions"]["total"] + paftools_summary["insertions"]["total"]
+        except: return None
     
     def paftools_summary(self):
         if not self:
@@ -84,6 +91,7 @@ class paf_file:
             }
             
             paftools_summary = subprocess.run(["paftools.js","call","-l","100","-L","100",self.file_path], capture_output=True, text=True).stderr
+            print(paftools_summary)#debug
 
             for line in paftools_summary.split("\n"):
                 try:
@@ -99,7 +107,7 @@ class paf_file:
         return self.paftools_fields
 
 class bed_file:
-    def __init__(self, bed_file):
+    def __init__(self, bed_file = [None,None,None,None,None,None]):
         self.get_index = 0
         if type(bed_file) is list:
             if type(bed_file[0]) is dict:
@@ -130,6 +138,9 @@ class bed_file:
             self.get_index = i
             header = ["chrom", "start", "end", "name", "score", "strand"]
             self.characteristics = {key:self.data[i][header.index(key)] for key in header if key}
+            try:
+                self.characteristics["length"] = self.characteristics["end"] - self.characteristics["start"]
+            except: self.characteristics["length"] = None
         return self.characteristics[key]
     
     def write_out(self, file_path):
@@ -210,10 +221,12 @@ class process:
         self.run_options["input"] = stdin
     
     def output(self, lines = False):
+        print(self.command)#debug
         output = subprocess.run(self.command,capture_output=True,text=True,**self.run_options).stdout
         if lines: output = output.strip().split("\n")
         return output
     def run(self):
+        print(self.command)#debug
         subprocess.run(self.command,**self.run_options)    
     def write_to(self, file):        
         with open(file,"w") as output_file:
