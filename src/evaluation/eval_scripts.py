@@ -5,6 +5,7 @@ from binf_util import paf_file, bed_file, minimap2, process
 from multiprocessing import Pool
 from time import perf_counter
 from shutil import rmtree
+import traceback
 
 def region_family_filter(filter_region, unfiltered_bed, filtered_bed = None, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
     # Filter a bed file by intersection with the regular recombination region,
@@ -108,26 +109,26 @@ def evaluate_family_and_position(
         json.dump(summary_dict,output_file, indent=4)
 
 def single_seq_eval(args):
-    single_seq_report = args[3]
+    single_seq_report = args[4]
     if not os.path.isfile(single_seq_report):
-        print(f"Now evaluating {args[0]['ID']}", flush=True)
         evaluate_sequence(*args)
     with open(single_seq_report,"r") as input:
         try:
             return json.load(input)
         except:
-            print(f"sequence eval failed for {args[0]['ID']}")
+            print(f"sequence eval failed for {args[0]['ID']}", flush=True)
             quit(1)
 
-def eval_i(stelr_json, ref_fasta, community_annotation, i=0, stelr="stelr", flush=True):
+def eval_i(stelr_json, stelr_contig_fa, ref_fasta, community_annotation, i=0, stelr="stelr"):
     i = int(i)
     with open(stelr_json,"r") as input:
         stelr_json = json.load(input)
-    print(evaluate_sequence(stelr_json[i],ref_fasta,community_annotation,stelr=stelr))
+    print(json.dumps([evaluate_sequence(stelr_json[i],stelr_contig_fa,ref_fasta,community_annotation,stelr=stelr,keep_intermediates=True)]))
 #python3 $stelr_src/evaluation/eval_scripts.py eval_i 50x_diploid_homozygous/simulated_reads.telr.te_filtered.json community_reference.fasta annotation_liftover_filtered.bed 0 telr
 
 def evaluate_sequence(
         stelr_json,
+        stelr_contig_fa,
         ref_fasta,
         community_annotation,
         report_file = None,
@@ -138,13 +139,20 @@ def evaluate_sequence(
     intermediate_files = []
     stelr = stelr.lower()
 
-    out_dir = "/".join(report_file.split("/")[:-1])
+    if report_file:
+        out_dir = "/".join(report_file.split("/")[:-1])
+    else: 
+        out_dir = "."
+    
+    prediction_paf = paf_file()
+    annotation = bed_file()
+    annotation_paf = paf_file()
 
     def output(te_id, keep_intermediates, intermediate_files, output, report_file, start):
         if not keep_intermediates:
             for file in intermediate_files:
                 os.remove(file)
-        print(f"{te_id} processed in {perf_counter()-start}", flush=True)
+        print(f"{te_id} processed in {perf_counter()-start} seconds",file=sys.stderr, flush=True)
         if not report_file: return output
         with open(report_file,"w") as outfile:
             json.dump(output,outfile,indent=4)
@@ -163,11 +171,21 @@ def evaluate_sequence(
     te_id = stelr_data['ID']
 
     # Make a fasta file containing the TE sequence predicted by STELR
-    prediction_head = f"{out_dir}/{te_id}.{stelr}"
+    prediction_head = f"{out_dir}/{te_id}-flanks.{stelr}"
     predicted_te_fasta = f"{prediction_head}.fasta"
+
+    if stelr_contig_fa.split("/")[-1] == "03_contig1.fa":
+        with open(stelr_contig_fa,"r") as input:
+            contig_seq = "".join(input.read().split("\n")[1:])
+    else:
+        with open(stelr_contig_fa,"r") as input:
+            contig_seq = "".join(input.read().split(stelr_data["contig_id"])[1].split(">")[0].split("\n")[1:])    
+    contig_seq = contig_seq[max(0,stelr_data["contig_te_start"]-flank_len):min(stelr_data["contig_length"],stelr_data["contig_te_end"]+flank_len)]
+
     with open(predicted_te_fasta,"w") as te_fasta_file:
-        te_fasta_file.write(f">{te_id}\n{stelr_data['te_sequence']}")
+        te_fasta_file.write(f">{te_id}\n{contig_seq}")
         intermediate_files.append(predicted_te_fasta)
+
 
     # align the STELR-predicted TE sequence to the community reference genome
     if keep_intermediates:
@@ -198,62 +216,73 @@ def evaluate_sequence(
     overlapping_annotations = [line for line in candidate_annotations if any([f(line[1],line[2]) for f in location_filters])]
 
     # check if there was exactly 1 TE annotation at the site of alignment
-    if len(overlapping_annotations) != 1:
-        if len(overlapping_annotations) > 1:
-            return output(te_id, keep_intermediates, intermediate_files, f'{te_id}: more than one TE in the aligned region', report_file, start)
-        else:
-            return output(te_id, keep_intermediates, intermediate_files, f'{te_id}: no ref TEs in the aligned region', report_file, start)
-              
+    if len(overlapping_annotations) == 1:
+        contig_cover_te = 1
     
-    # extract the reference genome sequence at the site of alignment
-    annotation = bed_file(overlapping_annotations[0])
-    annotation_head = f"{prediction_head}-corresponding_annotation"
-    annotation.faidx(ref_fasta,f"{annotation_head}.fasta")
+        # extract the reference genome sequence at the site of alignment
+        annotation = bed_file(overlapping_annotations[0])
+        annotation_head = f"{prediction_head}-corresponding_annotation"
+        ref_te = f"{annotation_head}.fasta"
+        annotation.faidx(ref_fasta,ref_te)
 
-    # use minimap2 to align STELR's predicted sequence for the TE to its actual reference sequence
-    annotation_paf, unsorted_annotation_paf = f"{annotation_head}.paf", f"{annotation_head}_unsorted.paf"
-    minimap2(ref_fasta,annotation.fasta,"cs",preset="asm5",output=unsorted_annotation_paf)
-    intermediate_files.append(unsorted_annotation_paf)
-    process(["sort","-k6,6","-k8,8n",unsorted_annotation_paf]).write_to(annotation_paf)
-    intermediate_files.append(annotation_paf)
-    annotation_paf = paf_file(annotation_paf)
-    paftools_summary = annotation_paf.paftools_summary()
+        # use minimap2 to align STELR's predicted sequence for the TE to its actual reference sequence
+        annotation_paf, unsorted_annotation_paf = f"{annotation_head}.paf", f"{annotation_head}_unsorted.paf"
+        minimap2(ref_te,annotation.fasta,"cs","cigar","verbose","secondary",preset="asm5",output=unsorted_annotation_paf)#changed, pay attention, TODO figure out if correct
+        intermediate_files.append(unsorted_annotation_paf)
+        process(["sort","-k6,6","-k8,8n",unsorted_annotation_paf]).write_to(annotation_paf)
+        intermediate_files.append(annotation_paf)
+        annotation_paf = paf_file(annotation_paf)    
+    else:
+        contig_cover_te = 0
+        if len(overlapping_annotations) > 1:
+            print(f'{te_id}: more than one TE in the aligned region',file=sys.stderr, flush=True)
+        else:
+            print(f'{te_id}: no ref TEs in the aligned region',file=sys.stderr, flush=True)
     
+    paftools_summary = annotation_paf.paftools_summary()
+
     #compile report
-    eval_report = {
-        "ID":                               te_id,
-        "contig_te_plus_flank_start":       max(0,stelr_data["contig_te_start"] - flank_len),
-        "contig_te_plus_flank_end":         min(stelr_data["contig_length"], stelr_data["contig_te_end"] + flank_len),
-        "contig_te_plus_flank_size":        None,#calculated below
-        "num_contig_ref_hits":              prediction_paf.count(),
-        "ref_aligned_chrom":                prediction_paf.get("chrom"),
-        "ref_aligned_start":                prediction_paf.get("start"),
-        "ref_aligned_end":                  prediction_paf.get("end"),
-        "contig_max_base_mapped_prop":      prediction_paf.get("map_prop"),
-        "contig_mapp_qual":                 prediction_paf.get("map_qual"),
-        "contig_num_residue_matches":       prediction_paf.get("matches"),
-        "contig_alignment_block_length":    prediction_paf.get("align_len"),
-        "contig_blast_identity":            prediction_paf.get("blast_id"),
-        "ref_te_family":                    annotation.get("name"),
-        "ref_te_length":                    annotation.get("end") - annotation.get("start"),te_id
-        "ref_te_num_1bp_del":               paftools_summary["deletions"]["1bp"],
-        "ref_te_num_1bp_ins":               paftools_summary["insertions"]["1bp"],
-        "ref_te_num_2bp_del":               paftools_summary["deletions"]["2bp"],
-        "ref_te_num_2bp_ins":               paftools_summary["insertions"]["2bp"],
-        "ref_te_num_50bp_del":              paftools_summary["deletions"]["[3,50)"],
-        "ref_te_num_50bp_ins":              paftools_summary["insertions"]["[3,50)"],
-        "ref_te_num_1kb_del":               paftools_summary["deletions"]["[50,1000)"],
-        "ref_te_num_1kb_ins":               paftools_summary["insertions"]["[50,1000)"],
-        "ref_te_num_ins":                   paftools_summary["insertions"]["total"],
-        "ref_te_num_del":                   paftools_summary["deletions"]["total"],
-        "ref_te_num_indel":                 paftools_summary["deletions"]["total"] + paftools_summary["insertions"]["total"]
-    }
-    eval_report["contig_te_plus_flank_size"] = eval_report["contig_te_plus_flank_end"] - eval_report["contig_te_plus_flank_start"]
+    try:
+        eval_report = {
+            "ID":                               te_id,
+            "contig_te_plus_flank_start":       max(0,stelr_data["contig_te_start"] - flank_len),
+            "contig_te_plus_flank_end":         min(stelr_data["contig_length"], stelr_data["contig_te_end"] + flank_len),
+            "contig_te_plus_flank_size":        None,#calculated below
+            "num_contig_ref_hits":              prediction_paf.count(),
+            "ref_aligned_chrom":                prediction_paf.get("chrom"),
+            "ref_aligned_start":                prediction_paf.get("start"),
+            "ref_aligned_end":                  prediction_paf.get("end"),
+            "contig_max_base_mapped_prop":      prediction_paf.get("map_prop"),
+            "contig_mapp_qual":                 prediction_paf.get("map_qual"),
+            "contig_num_residue_matches":       prediction_paf.get("matches"),
+            "contig_alignment_block_length":    prediction_paf.get("align_len"),
+            "contig_blast_identity":            prediction_paf.get("blast_id"),
+            "ref_te_family":                    annotation.get("name"),
+            "ref_te_length":                    annotation.get("length"),
+            "ref_te_num_1bp_del":               paftools_summary["deletions"]["1bp"],
+            "ref_te_num_1bp_ins":               paftools_summary["insertions"]["1bp"],
+            "ref_te_num_2bp_del":               paftools_summary["deletions"]["2bp"],
+            "ref_te_num_2bp_ins":               paftools_summary["insertions"]["2bp"],
+            "ref_te_num_50bp_del":              paftools_summary["deletions"]["[3,50)"],
+            "ref_te_num_50bp_ins":              paftools_summary["insertions"]["[3,50)"],
+            "ref_te_num_1kb_del":               paftools_summary["deletions"]["[50,1000)"],
+            "ref_te_num_1kb_ins":               paftools_summary["insertions"]["[50,1000)"],
+            "ref_te_num_ins":                   paftools_summary["insertions"]["total"],
+            "ref_te_num_del":                   paftools_summary["deletions"]["total"],
+            "ref_te_num_indel":                 annotation_paf.indels(),
+            "contig_cover_te":                  contig_cover_te
+        }
+        eval_report["contig_te_plus_flank_size"] = eval_report["contig_te_plus_flank_end"] - eval_report["contig_te_plus_flank_start"]
+    except:
+        print(te_id)
+        traceback.print_exc()
+        sys.exit(1)
 
     return output(te_id, keep_intermediates, intermediate_files, eval_report, report_file, start)
 
 def evaluate_all_sequences(
         stelr_json,
+        stelr_fasta,
         ref_fasta,
         community_annotation,
         report_file,
@@ -279,7 +308,7 @@ def evaluate_all_sequences(
             except:
                 os.remove(file)
     
-    eval_args = [[stelr_json[x], ref_fasta, community_annotation, f"{tmp}/{stelr_json[x]['ID']}", flank_len, stelr] for x in range(len(stelr_json))]
+    eval_args = [[stelr_json[x], stelr_fasta, ref_fasta, community_annotation, f"{tmp}/{stelr_json[x]['ID']}", flank_len, stelr] for x in range(len(stelr_json))]
 
     with Pool(threads) as p:
         compiled_data = [item for item in p.map(single_seq_eval,eval_args)]
@@ -364,7 +393,7 @@ def evaluate_zygosity(simulation, stelr_json, output_file):
     with open(output_file,"w") as output:
         json.dump(summary_dict, output, indent=4)
 
-def compare_seq_eval_results(oliver,shunhua):
+def compare_seq_eval_results(oliver,shunhua, output_file=None):
     with open(oliver,"r") as input:
         odata = json.load(input)
     with open(shunhua,"r") as input:
@@ -392,6 +421,10 @@ def compare_seq_eval_results(oliver,shunhua):
         print(mismatch)
         print(mismatches[mismatch])
     print(num_not_mismatch)
+
+    if output_file:
+        with open(output_file,"w")as outfile:
+            json.dump(mismatches,outfile,indent=4)
 
 if __name__ == '__main__':
     args = []
