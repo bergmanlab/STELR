@@ -222,12 +222,11 @@ def evaluate_sequence(
         # extract the reference genome sequence at the site of alignment
         annotation = bed_file(overlapping_annotations[0])
         annotation_head = f"{prediction_head}-corresponding_annotation"
-        ref_te = f"{annotation_head}.fasta"
-        annotation.faidx(ref_fasta,ref_te)
+        annotation.faidx(ref_fasta,f"{annotation_head}.fasta")
 
         # use minimap2 to align STELR's predicted sequence for the TE to its actual reference sequence
         annotation_paf, unsorted_annotation_paf = f"{annotation_head}.paf", f"{annotation_head}_unsorted.paf"
-        minimap2(ref_te,annotation.fasta,"cs","cigar","verbose","secondary",preset="asm5",output=unsorted_annotation_paf)#changed, pay attention, TODO figure out if correct
+        minimap2(annotation.fasta,predicted_te_fasta,"cs","cigar","verbose","secondary",preset="asm5",output=unsorted_annotation_paf)#changed, pay attention, TODO figure out if correct
         intermediate_files.append(unsorted_annotation_paf)
         process(["sort","-k6,6","-k8,8n",unsorted_annotation_paf]).write_to(annotation_paf)
         intermediate_files.append(annotation_paf)
