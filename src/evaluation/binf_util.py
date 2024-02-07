@@ -26,7 +26,6 @@ class paf_file:
         if self:
             max_len = max([line[10] for line in self.data])
             self.longest = [line for line in self.data if line[10] == max_len][0]
-            self.paftools_summary()#debug
         else: self.longest = None
     
     def __bool__(self):
@@ -91,7 +90,6 @@ class paf_file:
             }
             
             paftools_summary = subprocess.run(["paftools.js","call","-l","100","-L","100",self.file_path], capture_output=True, text=True).stderr
-            print(paftools_summary)#debug
 
             for line in paftools_summary.split("\n"):
                 try:
@@ -221,12 +219,10 @@ class process:
         self.run_options["input"] = stdin
     
     def output(self, lines = False):
-        print(self.command)#debug
         output = subprocess.run(self.command,capture_output=True,text=True,**self.run_options).stdout
         if lines: output = output.strip().split("\n")
         return output
     def run(self):
-        print(self.command)#debug
         subprocess.run(self.command,**self.run_options)    
     def write_to(self, file):        
         with open(file,"w") as output_file:
@@ -253,7 +249,7 @@ def minimap2(target, query, *args, **kwargs):
             return a
         if not a:
             return list[0]
-        print(f"Error: provided arg {arg} is not in list of valid args {l}")
+        print(f"Error: provided arg {arg} is not in list of valid args {l}", file=sys.stderr)
         sys.exit(1)    
 
     preset = minimap_preset()
@@ -301,3 +297,6 @@ def minimap2(target, query, *args, **kwargs):
         p.run()
     
 
+if __name__ == "__main__":
+    if ".paf" in sys.argv[1]:
+        paf_file(sys.argv[1])
