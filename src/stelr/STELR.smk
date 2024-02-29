@@ -192,7 +192,9 @@ rule sv_repeatmask:
         ins_seqs = "reads.vcf_ins.fasta",
         library = config["library"]
     output:
-        "vcf_ins_repeatmask/{ins_seqs}.out.gff"
+        rm_out = "vcf_ins_repeatmask/reads.vcf_ins.fasta.out.gff",
+        sort = "vcf_ins_repeatmask/reads.vcf_ins.fasta.out.sort.gff",
+        merge = "vcf_ins_repeatmask/reads.vcf_ins.fasta.out.merge.bed"
     params:
         repeatmasker_dir = "vcf_ins_repeatmask",
     threads: 20
@@ -201,29 +203,11 @@ rule sv_repeatmask:
     shell:
         """
         RepeatMasker -dir '{params.repeatmasker_dir}' -gff -s -nolow -no_is -xsmall -e ncbi -lib '{input.library}' -pa '{threads}' '{input.ins_seqs}'
+        bedtools sort -i '{output.rm_out}' > '{output.sort}'
+        bedtools merge -i '{output.sort}' > '{output.merge}'
         """
 
-rule sv_RM_sort:
-    input:
-        "vcf_ins_repeatmask/{ins_seqs}.out.gff"
-    output:
-        "vcf_ins_repeatmask/{ins_seqs}.out.sort.gff"
-        #bedtools
-    conda:
-        config["conda"]["stable_environment"]
-    shell:
-        "bedtools sort -i '{input}' > '{output}'"
-
-rule sv_RM_merge:
-    input:
-        "vcf_ins_repeatmask/{ins_seqs}.out.sort.gff"
-    output:
-        "vcf_ins_repeatmask/{ins_seqs}.out.merge.bed"
-        #bedtools
-    conda:
-        config["conda"]["stable_environment"]
-    shell:
-        "bedtools merge -i '{input}' > '{output}'"
+# TODO: this could probably all be handled by binf_utils in one script instead
 
 rule sv_TE_extract:
     input:
@@ -232,47 +216,23 @@ rule sv_TE_extract:
         ins_rm_merge = "vcf_ins_repeatmask/reads.vcf_ins.fasta.out.merge.bed"
     output:
         ins_filtered = "reads.vcf.filtered.tmp.tsv",
+        ins_merged = "reads.vcf.merged.tmp.tsv",
+        parsed = "reads.vcf_filtered.tsv",
         loci_eval = "reads.loci_eval.tsv"
-    conda:
-        config["conda"]["stable_environment"]
-    shell:
-        "python3 {config[STELR_sv]} te_extract '{input.parsed_vcf}' '{input.ins_seqs}' '{input.ins_rm_merge}' '{output.ins_filtered}' '{output.loci_eval}'"
-
-rule seq_merge:
-    input:
-        "reads.vcf.filtered.tmp.tsv"
-    output: 
-        "reads.vcf.merged.tmp.tsv"
     params:
         window = 20
-        #bedtools
     conda:
         config["conda"]["stable_environment"]
     shell:
-        'bedtools merge -o collapse -c 2,3,4,5,6,7,8,9,10,11,12,13,14 -delim ";" -d "{params.window}" -i "{input}" > "{output}"'
-
-rule merge_parsed_vcf:##### can we thread back to here? (probably not easily)
-    input:
-        "reads.vcf.merged.tmp.tsv"
-    output:
-        "reads.vcf_filtered.tsv"
-    conda:
-        config["conda"]["stable_environment"]
-    shell:
-        "python3 {config[STELR_sv]} merge_vcf '{input}' '{output}'"
+        """
+        python3 {config[STELR_sv]} te_extract '{input.parsed_vcf}' '{input.ins_seqs}' '{input.ins_rm_merge}' '{output.ins_filtered}' '{output.loci_eval}'
+        bedtools merge -o collapse -c 2,3,4,5,6,7,8,9,10,11,12,13,14 -delim ";" -d "{params.window}" -i "{output.ins_filtered}" > "{output.ins_merged}"
+        python3 {config[STELR_sv]} merge_vcf '{output.ins_merged}' '{output.parsed}'
+        """
 
 """
 2nd stage: assembly and polish local TE contig
 """
-'''
-rule initialize_contig_dir:
-    input:
-        "reads.vcf_filtered.tsv"
-    output:
-        "contigs/{contig}/00_vcf_parsed.tsv"
-    shell:
-        "python3 {config[STELR_assembly]} make_contig_dir '{input}' '{wildcards.contig}' '{output}'"
-'''
 checkpoint initialize_contig_dirs:
     input:
         "reads.vcf_filtered.tsv",
