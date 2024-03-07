@@ -139,7 +139,8 @@ def evaluate_sequence(
         report_file = None,
         flank_len=500,
         stelr="stelr",
-        keep_intermediates=False):
+        keep_intermediates=False,
+        same_family = True):
     start = perf_counter()
     intermediate_files = []
     stelr = stelr.lower()
@@ -177,28 +178,31 @@ def evaluate_sequence(
 
     # Make a fasta file containing the TE sequence predicted by STELR
     prediction_head = f"{out_dir}/{te_id}-flanks.{stelr}"
-    predicted_te_fasta = f"{prediction_head}.fasta"
+    te_flank_fasta = f"{prediction_head}.fasta"
+    te_fasta = f"{out_dir}/{te_id}.{stelr}.fasta"
 
     if stelr_contig_fa.split("/")[-1] == "03_contig1.fa":
-        with open(stelr_contig_fa,"r") as input:
-            contig_seq = "".join(input.read().split("\n")[1:])
+        with open(stelr_contig_fa,"r") as i:
+            contig_seq = "".join(i.read().split("\n")[1:])
     else:
-        with open(stelr_contig_fa,"r") as input:
-            contig_seq = "".join(input.read().split(stelr_data["contig_id"])[1].split(">")[0].split("\n")[1:])    
+        with open(stelr_contig_fa,"r") as i:
+            contig_seq = "".join(i.read().split(stelr_data["contig_id"])[1].split(">")[0].split("\n")[1:])    
     contig_seq = contig_seq[max(0,stelr_data["contig_te_start"]-flank_len):min(stelr_data["contig_length"],stelr_data["contig_te_end"]+flank_len)]
 
-    with open(predicted_te_fasta,"w") as te_fasta_file:
-        te_fasta_file.write(f">{te_id}\n{contig_seq}")
-        intermediate_files.append(predicted_te_fasta)
-
+    with open(te_flank_fasta,"w") as o:
+        o.write(f">{te_id}\n{contig_seq}")
+        intermediate_files.append(te_flank_fasta)
+    with open(te_fasta,"w") as o:
+        o.write(f">{te_id}\n{stelr_data['te_sequence']}")
+        intermediate_files.append(te_fasta)
 
     # align the STELR-predicted TE sequence to the community reference genome
     if keep_intermediates:
         prediction_paf = f"{prediction_head}-to-{'.'.join(ref_fasta.split('.')[:-1])}.paf"
-        minimap2(ref_fasta,predicted_te_fasta,"cigar",output=prediction_paf)
+        minimap2(ref_fasta,te_flank_fasta,"cigar",output=prediction_paf)
         prediction_paf = paf_file(prediction_paf)
     else:
-        prediction_paf = paf_file(minimap2(ref_fasta,predicted_te_fasta,"cigar"))
+        prediction_paf = paf_file(minimap2(ref_fasta,te_flank_fasta,"cigar"))
 
     if not prediction_paf:
         return output(te_id, keep_intermediates, intermediate_files, f'{te_id}: TE did not align to reference', report_file, start)
@@ -211,8 +215,10 @@ def evaluate_sequence(
     annotation_data = bed_file(community_annotation).data
     
     # filter all of the annotated TEs in the reference genome by whether they overlap with the position where the predicted TE aligned to the reference
+    if same_family: family_match = lambda x: x[3] == stelr_data["family"]
+    else: family_match = lambda _: True
     aligned_chrom = prediction_paf.get("chrom")
-    candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and line[3] == stelr_data["family"]]
+    candidate_annotations = [line for line in annotation_data if line[0] == aligned_chrom and family_match(line)]
     location_filters = [
         lambda start, end: start >= ref_align_start and end <= ref_align_end,
         lambda start, end: start <= ref_align_end and end >= ref_align_end,
@@ -231,7 +237,7 @@ def evaluate_sequence(
 
         # use minimap2 to align STELR's predicted sequence for the TE to its actual reference sequence
         annotation_paf, unsorted_annotation_paf = f"{annotation_head}.paf", f"{annotation_head}_unsorted.paf"
-        minimap2(annotation.fasta,predicted_te_fasta,"cs","cigar","secondary",preset="asm5",output=unsorted_annotation_paf)#changed, pay attention, TODO figure out if correct
+        minimap2(annotation.fasta,te_fasta,"cs","cigar","secondary",preset="asm5",output=unsorted_annotation_paf)#changed, pay attention, TODO figure out if correct
         intermediate_files.append(unsorted_annotation_paf)
         process(["sort","-k6,6","-k8,8n",unsorted_annotation_paf]).write_to(annotation_paf)
         intermediate_files.append(annotation_paf)
