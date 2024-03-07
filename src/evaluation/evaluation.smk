@@ -361,7 +361,7 @@ rule family_position_evaluation:
         evaluate_family_and_position(
             stelr_json = input.telr_json,
             filtered_annotation = input.filtered_annotation,
-            summary_file output.summary_file,
+            summary_file = output.summary_file,
             exclude_nested_insertions = params.exclude_nested_insertions,
             relax_mode = params.relax_mode,
             window = params.window,
