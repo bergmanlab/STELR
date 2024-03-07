@@ -427,6 +427,11 @@ def compare_seq_eval_results(oliver,shunhua, output_file=None):
             else:
                 print(f"No match for {odata[n]['ID']}")
     
+    for n in range(len(sdata)):
+        match = [item for item in odata if item["ID"] == sdata[n]["ID"]]
+        if not match:
+            print(f"Missed record for {sdata[n]['ID']}")
+    
     for mismatch in mismatches:
         print(mismatch)
         print(mismatches[mismatch])
