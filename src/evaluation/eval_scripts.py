@@ -116,13 +116,16 @@ def evaluate_family_and_position(
 def single_seq_eval(args):
     single_seq_report = args[4]
     if not os.path.isfile(single_seq_report):
-        evaluate_sequence(*args)
-    with open(single_seq_report,"r") as input:
-        try:
-            return json.load(input)
-        except:
-            print(f"sequence eval failed for {args[0]['ID']}", flush=True)
-            quit(1)
+        completed = evaluate_sequence(*args)
+    else: completed = True
+    if completed: 
+        with open(single_seq_report,"r") as input:
+            try:
+                return json.load(input)
+            except:
+                print(f"sequence eval failed for {args[0]['ID']}", flush=True)
+                quit(1)
+    else: return None
 
 def eval_i(stelr_json, stelr_contig_fa, ref_fasta, community_annotation, i=0, stelr="stelr"):
     i = int(i)
@@ -162,6 +165,7 @@ def evaluate_sequence(
         if not report_file: return output
         with open(report_file,"w") as outfile:
             json.dump(output,outfile,indent=4)
+        return True
             
 
     # load TELR or STELR json file
@@ -175,6 +179,11 @@ def evaluate_sequence(
             with open(stelr_json,"r") as stelr_json:
                 stelr_data = json.load(stelr_json)
     te_id = stelr_data['ID']
+
+    # Filter out records with single-sided support
+    if not stelr_data["support"] == "both_sides": 
+        print(f"{te_id} not processed due to single-sided support",file=sys.stderr, flush=True)
+        return None
 
     # Make a fasta file containing the TE sequence predicted by STELR
     prediction_head = f"{out_dir}/{te_id}-flanks.{stelr}"
@@ -321,7 +330,7 @@ def evaluate_all_sequences(
     eval_args = [[stelr_json[x], stelr_fasta, ref_fasta, community_annotation, f"{tmp}/{stelr_json[x]['ID']}", flank_len, stelr] for x in range(len(stelr_json))]
 
     with Pool(threads) as p:
-        compiled_data = [item for item in p.map(single_seq_eval,eval_args)]
+        compiled_data = [item for item in p.map(single_seq_eval,eval_args) if item]
     
     with open(report_file,"w") as output:
         json.dump(compiled_data,output,indent=4)
