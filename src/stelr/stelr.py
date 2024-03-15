@@ -502,14 +502,15 @@ class verbose:
 
 if __name__ == "__main__":
     if sys.argv[1] == "evaluate":
-        if "--script" in sys.argv:
+        if "--module" in sys.argv:
             eval_code = "/src/".join(__file__.split("/src/")[:-1]) + f"/src/evaluation/eval_scripts.py"
-            try: args = sys.argv[sys.argv.index("--script")+1:]
+            try: args = sys.argv[sys.argv.index("--module")+1:]
             except: 
                 print("Not enough args: please include script name and options.",file=sys.stderr)
                 sys.exit(1)
             if len(args) == 2:
                 sys.path.append("/".join(eval_code.split("/")[:-1]))
+                args[0] = f"evaluate_{args[0]}".replace("evaluate_evaluate_","evaluate_")
                 from eval_scripts import *
                 globals()[args[0]](**json.loads(args[1]))
                 quit()
