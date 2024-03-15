@@ -116,7 +116,7 @@ def evaluate_family_and_position(
 def single_seq_eval(args):
     single_seq_report = args[4]
     if not os.path.isfile(single_seq_report):
-        completed = evaluate_sequence(*args)
+        completed = sequence_evaluation(*args)
     else: completed = True
     if completed: 
         with open(single_seq_report,"r") as input:
@@ -131,10 +131,10 @@ def eval_i(stelr_json, stelr_contig_fa, ref_fasta, community_annotation, i=0, st
     i = int(i)
     with open(stelr_json,"r") as input:
         stelr_json = json.load(input)
-    print(json.dumps([evaluate_sequence(stelr_json[i],stelr_contig_fa,ref_fasta,community_annotation,stelr=stelr,keep_intermediates=True)]))
+    print(json.dumps([sequence_evaluation(stelr_json[i],stelr_contig_fa,ref_fasta,community_annotation,stelr=stelr,keep_intermediates=True)]))
 #python3 $stelr_src/evaluation/eval_scripts.py eval_i 50x_diploid_homozygous/simulated_reads.telr.te_filtered.json community_reference.fasta annotation_liftover_filtered.bed 0 telr
 
-def evaluate_sequence(
+def sequence_evaluation(
         stelr_json,
         stelr_contig_fa,
         ref_fasta,
@@ -299,7 +299,7 @@ def evaluate_sequence(
 
     return output(te_id, keep_intermediates, intermediate_files, eval_report, report_file, start)
 
-def evaluate_all_sequences(
+def evaluate_sequence(
         stelr_json,
         stelr_fasta,
         ref_fasta,
@@ -343,7 +343,7 @@ def evaluate_all_sequences(
     
 #For testing and debugging purposes, this rule can also be run on the command line as follows:
 '''
-python3 $stelr_src/evaluation/eval_scripts.py evaluate_all_sequences '{
+python3 $stelr_src/evaluation/eval_scripts.py evaluate_sequence '{
     "stelr_json":"50x_diploid_homozygous/simulated_reads.telr.te_filtered.json",
     "ref_fasta":"community_reference.fasta",
     "community_annotation":"annotation_liftover_filtered.bed",
@@ -354,8 +354,9 @@ python3 $stelr_src/evaluation/eval_scripts.py evaluate_all_sequences '{
 }'
 '''
 
-def evaluate_zygosity(simulation, stelr_json, output_file):
+def evaluate_zygosity(simulation, stelr_json, output_file, margin=0.125):
     coverage, ploidy, genotype = simulation.split("_")
+    margin = float(margin)
 
     target_bucket = {
         "diploid":{
@@ -370,7 +371,8 @@ def evaluate_zygosity(simulation, stelr_json, output_file):
         }
     }[ploidy][genotype]
 
-    buckets = [[0,0.375],[0.375,0.625],[0.625,0.875],[0.875,1]]
+    target_numbers = [0.25,0.5,0.75,1]
+    buckets = [[i-margin,i+margin] for i in target_numbers]
 
     with open(stelr_json,"r") as input_file:
         stelr_json = json.load(input_file)
