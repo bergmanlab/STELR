@@ -386,11 +386,16 @@ SEQUENCE EVALUATION
 
 """
         
-rule run_seq_eval:
+def loci_fasta_name(wildcards):
+    if wildcards.telr == "stelr": return "{simulation}/simulated_reads.telr.contig.fasta"
+    return "{simulation}/simulated_reads.stelr.loci.fasta"
+
+rule sequence_evaluation:
     input:
         filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
+        stelr_fasta = loci_fasta_name,
         ref_fasa = "community_reference.fasta"
-        filtered_annotation = "annotation_litover_filtered.bed"
+        filtered_annotation = "annotation_litover_filtered.bed",
     output: "{simulation}/simultated_reads.{stelr}.te_{index}_seq_report.json"
     params:
         flank_len = 500,
