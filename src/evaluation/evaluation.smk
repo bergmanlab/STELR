@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 telr_dir = config["telr_dir"]
 sys.path.insert(0,telr_dir)
 from STELR_utility import getdict, setdict, abs_path
@@ -246,16 +247,16 @@ checkpoint run_telr:
     
 """
 
-FILTER ANNOTATION AND STELR/TELR OUTPUT BY REGION AND FAMILY
+PREPARE DATA FOR EVALUATION
 
 """
 
 rule filter_annotation:
     input:
         filter_region = "regular_recomb.bed",
-        unfiltered_bed = "annotation_liftover.bed"#TODO:still need to add this to config
+        unfiltered_bed = "{reference}.bed"
     output:
-        filtered_bed = "annotation_litover_filtered.bed"
+        filtered_bed = "{reference}_filtered.bed"
     params:
         exclude_families = ["INE_1"], 
         exclude_nested_insertions = False
@@ -271,8 +272,8 @@ rule filter_annotation:
         #For testing and debugging purposes, this rule can also be run on the command line as follows:
         python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
             "filter_region":"regular_recomb.bed",
-            "unfiltered_bed":"annotation_liftover.bed",
-            "filtered_bed":"annotation_litover_filtered.bed",
+            "unfiltered_bed":"mapping_reference.fasta.te.bed",
+            "filtered_bed":"mapping_reference.fasta.te_filtered.bed",
             "exclude_families":["INE_1"],
             "exclude_nested_insertions":false
         }'
@@ -312,6 +313,18 @@ rule filter_output:
         }'
         '''
 
+rule liftover_annotation:
+    input:
+        community_reference = "community_reference.fasta",
+        community_annotation = "community_annotation.bed",
+        mapping_reference = "mapping_reference.fasta",
+        mapping_annotation = "mapping_reference.fasta.te.bed"
+    output:
+        "community_liftover.bed"
+    run:#TODO#left off here
+
+
+
 """
 
 EVALUATE STELR COORDINATE AND FAMILY PREDICTIONS
@@ -321,7 +334,7 @@ EVALUATE STELR COORDINATE AND FAMILY PREDICTIONS
 rule family_position_evaluation:
     input:
         filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
-        filtered_annotation = "annotation_litover_filtered.bed"
+        filtered_annotation = "community_liftover_filtered.bed"
     output:
         summary_file = "{simulation}/family_position_summary.{stelr}.json"
     params:
@@ -342,7 +355,7 @@ rule family_position_evaluation:
         #For testing and debugging purposes, this rule can also be run on the command line as follows:
         python3 $stelr_src/evaluation/eval_scripts.py evaluate_family_and_position '{
             "stelr_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
-            "filtered_annotation":"annotation_liftover_filtered.bed",
+            "filtered_annotation":"community_liftover_filtered.bed",
             "summary_file":"50x_diploid_homozygous/family_position_summary.stelr.json",
             "exclude_nested_insertions":false,
             "relax_mode":false,
@@ -366,7 +379,7 @@ rule sequence_evaluation:
         filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json",
         stelr_fasta = loci_fasta_name,
         ref_fasa = "community_reference.fasta"
-        filtered_annotation = "annotation_litover_filtered.bed",
+        filtered_annotation = "community_annotation_filtered.bed",
     output: "{simulation}/simultated_reads.{stelr}.te_{index}_seq_report.json"
     params:
         flank_len = 500,
@@ -377,7 +390,7 @@ rule sequence_evaluation:
         evaluate_sequence(
             stelr_json = stelr_json,
             ref_fasta = input.ref_fasta,
-            community_annotation = input.filtered_annotation,
+            community_annotation = input.filtered_annotation,#TODO: wait what? community annotation is lifted over annotation?
             report_file = output[0],
             flank_len = params.flank_len,
             stelr = wildcards.stelr,
