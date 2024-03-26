@@ -277,14 +277,17 @@ rule filter_annotation:
             "exclude_nested_insertions":false
         }'
         '''
-
-rule filter_stelr_output:
+        
+def te_json_name(wildcards):
+    if wildcards.telr == "telr": return f"{wildcards.simulation}/simulated_reads.telr.expanded.json"
+    return f"{wildcards.simulation}/simulated_reads.stelr.te.json"
+rule filter_output:
     input:
         filter_region = "regular_recomb.bed",
-        unfiltered_bed = "{simulation}/simulated_reads.stelr.bed",
-        unfiltered_json = "{simulation}/simulated_reads.stelr.te.json"
+        unfiltered_bed = "{simulation}/simulated_reads.{stelr}.bed",
+        unfiltered_json = te_json_name
     output:
-        filtered_json = "{simulation}/simulated_reads.stelr.te_filtered.json"
+        filtered_json = "{simulation}/simulated_reads.{stelr}.te_filtered.json"
     params:
         exclude_families = ["INE_1"], 
         exclude_nested_insertions = False
@@ -304,38 +307,6 @@ rule filter_stelr_output:
             "unfiltered_bed":"50x_diploid_homozygous/simulated_reads.stelr.bed",
             "unfiltered_json":"50x_diploid_homozygous/simulated_reads.stelr.te.json",
             "filtered_json":"50x_diploid_homozygous/simulated_reads.stelr.te_filtered.json",
-            "exclude_families":["INE_1"],
-            "exclude_nested_insertions":false
-        }'
-        '''
-
-rule filter_telr_output:
-    #it is probably important that any changes made to the above rule are also made to this one and vice versa.
-    input:
-        filter_region = "regular_recomb.bed",
-        unfiltered_bed = "{simulation}/simulated_reads.telr.bed",
-        unfiltered_json = "{simulation}/simulated_reads.telr.expanded.json"
-    output:
-        filtered_json = "{simulation}/simulated_reads.telr.te_filtered.json"
-    params:
-        exclude_families = ["INE_1"], 
-        exclude_nested_insertions = False
-    run:
-        region_family_filter(
-            filter_region = input.filter_region,
-            unfiltered_bed = input.unfiltered_bed,
-            unfiltered_json = input.unfiltered_json,
-            filtered_json = output.filtered_json,
-            exclude_families = params.exclude_families, 
-            exclude_nested_insertions = params.exclude_nested_insertions
-        )
-        '''
-        #For testing and debugging purposes, this rule can also be run on the command line as follows:
-        python3 $stelr_src/evaluation/eval_scripts.py region_family_filter '{
-            "filter_region":"regular_recomb.bed",
-            "unfiltered_bed":"50x_diploid_homozygous/simulated_reads.telr.bed",
-            "unfiltered_json":"50x_diploid_homozygous/simulated_reads.telr.expanded.json",
-            "filtered_json":"50x_diploid_homozygous/simulated_reads.telr.te_filtered.json",
             "exclude_families":["INE_1"],
             "exclude_nested_insertions":false
         }'
@@ -387,8 +358,8 @@ SEQUENCE EVALUATION
 """
         
 def loci_fasta_name(wildcards):
-    if wildcards.telr == "stelr": return "{simulation}/simulated_reads.telr.contig.fasta"
-    return "{simulation}/simulated_reads.stelr.loci.fasta"
+    if wildcards.telr == "telr": return f"{wildcards.simulation}/simulated_reads.telr.contig.fasta"
+    return f"{wildcards.simulation}/simulated_reads.stelr.loci.fasta"
 
 rule sequence_evaluation:
     input:

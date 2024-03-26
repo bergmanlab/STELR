@@ -7,6 +7,9 @@ from time import perf_counter
 from shutil import rmtree
 import traceback
 
+def evaluate_region_family_filter(*args,**kwargs):
+    region_family_filter(*args,**kwargs)
+
 def region_family_filter(filter_region, unfiltered_bed, filtered_bed = None, unfiltered_json = None, filtered_json = None, exclude_families = ["INE_1"], exclude_nested_insertions = False):
     # Filter a bed file by intersection with the regular recombination region,
     # By excluding "nested" insertions ie insertions with multiple predicted families,
